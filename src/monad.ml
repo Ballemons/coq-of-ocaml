@@ -11,6 +11,7 @@ module Command = struct
     | GetConfiguration : Configuration.t t
     | GetEnv : Env.t t
     | GetEnvStack : Env.t list t
+    | GetAdtEnv : Path.t -> (AdtEnv.variable list) t
     | GetLoc : Loc.t t
     | Raise : 'a * Error.Category.t * string -> 'a t
     | Use : bool * string * string -> unit t
@@ -20,6 +21,7 @@ module Wrapper = struct
   type t =
     | EnvSet of Env.t
     | EnvStackPush
+    | AdtEnvAdd of Path.t * AdtEnv.variable list
     | LocSet of Loc.t
 end
 

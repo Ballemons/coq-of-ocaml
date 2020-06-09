@@ -42,6 +42,7 @@ module Context = struct
   type t = {
     configuration : Configuration.t;
     env : Env.t;
+    adtEnv : AdtEnv.t;
     env_stack : EnvStack.t;
     loc : Loc.t;
   }
@@ -53,6 +54,7 @@ module Context = struct
     : t = {
     configuration;
     env = initial_env;
+    adtEnv = Hashtbl.create 100;
     env_stack = [];
     loc = initial_loc;
   }
@@ -71,6 +73,9 @@ module Command = struct
       | GetConfiguration -> Result.success context.configuration
       | GetEnv -> Result.success context.env
       | GetEnvStack -> Result.success context.env_stack
+      | GetAdtEnv path ->
+        let ev = Hashtbl.find context.adtEnv path in
+        Result.success ev
       | GetLoc -> Result.success context.loc
       | Raise (value, category, message) ->
         let result = Result.success value in
@@ -104,6 +109,9 @@ module Wrapper = struct
     fun context ->
       match wrapper with
       | EnvSet env -> interpret {context with env}
+      | AdtEnvAdd (path, vars) ->
+        Hashtbl.add context.adtEnv path vars ;
+        interpret context
       | EnvStackPush ->
         interpret {context with env_stack = context.env :: context.env_stack}
       | LocSet loc -> interpret {context with loc}

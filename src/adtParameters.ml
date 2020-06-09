@@ -2,10 +2,10 @@ open Monad.Notations
 
 module AdtVariable = struct
   type t =
-    | Error
-    | Parameter of Name.t
-    | Index of Name.t
-    | Unknown
+  | Error
+  | Parameter of Name.t
+  | Index of Name.t
+  | Unknown
 
   let rec of_ocaml (typ : Types.type_expr) : t Monad.t =
     match typ.Types.desc with
@@ -20,7 +20,6 @@ module AdtVariable = struct
     | Tconstr (typ, _, _) ->
       Path.last typ |> Name.of_string false >>= fun typ ->  return (Index typ)
     | _ -> return Error
-
 end
 
 type t = AdtVariable.t list
