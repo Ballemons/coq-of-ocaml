@@ -160,6 +160,7 @@ let rec of_typ_expr
   (typ_vars : Name.t Name.Map.t)
   (typ : Types.type_expr)
   : (t * Name.t Name.Map.t * Name.Set.t) Monad.t =
+  print_string "of_typ_expr\n";
   match typ.desc with
   | Tvar x | Tunivar x ->
     (match x with
@@ -190,6 +191,13 @@ let rec of_typ_expr
     of_typs_exprs with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
     return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, _) ->
+    print_string ((Path.name path) ^ "\n");
+    (* print_string "x\n"; *)
+    (* Format.print_cut (); *)
+    (* Path.print Format.std_formatter path; *)
+    (* Format.close_box (); *)
+    (* Format.print_newline (); *)
+    (* print_string "\n"; *)
     non_phantom_typs path typs >>= fun typs ->
     of_typs_exprs with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
     MixedPath.of_path false path None >>= fun mixed_path ->
@@ -223,6 +231,7 @@ let rec of_typ_expr
       "Nil type is not handled"
   | Tlink typ | Tsubst typ -> of_typ_expr with_free_vars typ_vars typ
   | Tvariant { row_fields; _ } ->
+    print_string "tvariant\n";
     PathName.typ_of_variants (List.map fst row_fields) >>= fun path_name ->
     begin match path_name with
     | Some path_name ->
