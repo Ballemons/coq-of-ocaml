@@ -126,14 +126,14 @@ module Constructors = struct
       let typ_vars = Name.Map.empty in
       begin match cd_args with
       | Cstr_tuple param_typs ->
-        Type.of_typs_exprs true typ_vars param_typs >>= fun (param_typs, _, _) ->
+        Type.of_typs_exprs true typ_vars param_typs cd_loc >>= fun (param_typs, _, _) ->
         return (param_typs, None)
       | Cstr_record labeled_typs ->
         set_loc (Loc.of_location cd_loc) (
         (
           labeled_typs |>
           List.map (fun { Types.ld_type; _ } -> ld_type) |>
-          Type.of_typs_exprs true typ_vars
+          (fun x -> Type.of_typs_exprs true typ_vars x cd_loc)
         ) >>= fun (record_params, _, _) ->
         let* record_fields =
           labeled_typs |> Monad.List.map ( fun { Types.ld_id; _ } ->
@@ -193,12 +193,13 @@ module Constructors = struct
 
     let of_ocaml_row
       (defined_typ_params : AdtParameters.t)
+      (loc : Location.t)
       (row : Asttypes.label * Types.row_field)
       : t Monad.t =
       let (label, field) = row in
       let* constructor_name = Name.of_string false label in
       let typs = Type.type_exprs_of_row_field field in
-      Type.of_typs_exprs true Name.Map.empty typs >>= fun (param_typs, _, _) ->
+      Type.of_typs_exprs true Name.Map.empty typs loc >>= fun (param_typs, _, _) ->
       return {
         constructor_name;
         param_typs;
@@ -570,16 +571,17 @@ let filter_in_free_vars
         None
   )
 
-let of_ocaml (typs : type_declaration list) : t Monad.t =
+let of_ocaml (typs : type_declaration list)
+  : t Monad.t =
   match typs with
-  | [ { typ_id; typ_type = { type_manifest = Some typ; type_params; _ }; _ } ] ->
+  | [ { typ_id; typ_type = { type_manifest = Some typ; type_params; type_loc; _ }; _ } ] ->
     let* name = Name.of_ident false typ_id in
     AdtParameters.of_ocaml type_params >>= fun ind_vars ->
     let typ_args = AdtParameters.get_parameters ind_vars in
     begin match typ.Types.desc with
     | Tvariant { row_fields; _ } ->
       Monad.List.map
-        (Constructors.Single.of_ocaml_row ind_vars)
+        (Constructors.Single.of_ocaml_row ind_vars type_loc)
         row_fields >>= fun single_constructors ->
       Constructors.of_ocaml ind_vars single_constructors >>= fun (constructors, _) ->
       raise
@@ -592,7 +594,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
         NotSupported
         "Polymorphic variant types are defined as standard algebraic types"
     | _ ->
-      Type.of_type_expr_without_free_vars typ >>= fun typ ->
+      Type.of_type_expr_without_free_vars typ type_loc >>= fun typ ->
       let free_vars = Type.typ_args_of_typ typ in
       let typ_args = filter_in_free_vars typ_args free_vars in
       return (Synonym (name, typ_args, typ))
@@ -607,12 +609,12 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
       else
         [] in
     return (Abstract (name, typ_args_with_unknowns))
-  | [ { typ_id; typ_type = { type_kind = Type_record (fields, _); type_params; _ }; _ } ] ->
+  | [ { typ_id; typ_type = { type_kind = Type_record (fields, _); type_params; type_loc; _ }; _ } ] ->
     let* name = Name.of_ident false typ_id in
     AdtParameters.of_ocaml type_params >>= fun typ_args ->
     (fields |> Monad.List.map (fun { Types.ld_id = x; ld_type = typ; _ } ->
       let* x = Name.of_ident false x in
-      Type.of_type_expr_without_free_vars typ >>= fun typ ->
+      Type.of_type_expr_without_free_vars typ type_loc >>= fun typ ->
       return (x, typ)
     )) >>= fun fields ->
     let free_vars = Type.typ_args_of_typs (List.map snd fields) in
@@ -632,10 +634,10 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
       let* name = Name.of_ident false typ.typ_id in
       AdtParameters.of_ocaml typ.typ_type.type_params >>= fun typ_args ->
       match typ with
-      | { typ_type = { type_manifest = Some typ; _ }; _ } ->
+      | { typ_type = { type_manifest = Some typ; type_loc; _ }; _ } ->
         begin match typ.Types.desc with
         | Tvariant { row_fields; _ } ->
-          Monad.List.map (Constructors.Single.of_ocaml_row typ_args) row_fields >>= fun single_constructors ->
+          Monad.List.map (Constructors.Single.of_ocaml_row typ_args type_loc) row_fields >>= fun single_constructors ->
           Constructors.of_ocaml typ_args single_constructors >>= fun (constructors, _) ->
           raise
             (
@@ -647,7 +649,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
             NotSupported
             "Polymorphic variant types are defined as standard algebraic types"
         | _ ->
-          Type.of_type_expr_without_free_vars typ >>= fun typ ->
+          Type.of_type_expr_without_free_vars typ type_loc >>= fun typ ->
           let free_vars = Type.typ_args_of_typ typ in
           let typ_args = filter_in_free_vars (AdtParameters.get_parameters typ_args) free_vars in
           return (
@@ -666,10 +668,10 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
           (constructor_records, notations, records, typs)
           NotSupported
           "Abstract types not supported in mutually recursive definitions"
-      | { typ_type = { type_kind = Type_record (fields, _); _ }; _ } ->
+      | { typ_type = { type_kind = Type_record (fields, _); type_loc; _ }; _ } ->
         (fields |> Monad.List.map (fun { Types.ld_id = x; ld_type = typ; _ } ->
           let* x = Name.of_ident false x in
-          Type.of_type_expr_without_free_vars typ >>= fun typ ->
+          Type.of_type_expr_without_free_vars typ type_loc >>= fun typ ->
           return (x, typ)
         )) >>= fun fields ->
         let free_vars = Type.typ_args_of_typs (List.map snd fields) in

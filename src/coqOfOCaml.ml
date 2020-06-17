@@ -178,7 +178,7 @@ let main () =
     let initial_env = Mtyper.get_env typing in
 
     let context =
-      MonadEval.Context.init configuration initial_env initial_loc in
+      MonadEval.Context.init configuration initial_env initial_loc pipeline in
 
     let output =
       of_ocaml

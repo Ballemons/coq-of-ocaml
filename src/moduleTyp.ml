@@ -37,7 +37,7 @@ let of_ocaml_module_with_substitutions
       begin match typ_type with
       | { type_kind = Type_abstract; type_manifest = Some typ; type_params; _ } ->
         set_loc (Loc.of_location typ_loc) (
-        Type.of_type_expr_without_free_vars typ >>= fun typ ->
+        Type.of_type_expr_without_free_vars typ long_ident_loc.loc >>= fun typ ->
         Monad.List.map Type.of_type_expr_variable type_params >>= fun typ_params ->
         let* path_name = PathName.of_path_without_convert false path in
         return (Some (path_name, typ_params, typ)))

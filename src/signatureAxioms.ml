@@ -43,9 +43,9 @@ let name_of_included_module_typ (module_typ : Typedtree.module_type)
 
 let of_types_signature (signature : Types.signature) : t Monad.t =
   signature |> Monad.List.map (function
-    | Types.Sig_value (ident, { val_type; _ }, _) ->
+    | Types.Sig_value (ident, { val_type; val_loc; _ }, _) ->
       let* name = Name.of_ident true ident in
-      Type.of_typ_expr true Name.Map.empty val_type >>= fun (typ, _, _) ->
+      Type.of_typ_expr true Name.Map.empty val_type val_loc >>= fun (typ, _, _) ->
       let typ_vars = Name.Set.elements (Type.typ_args_of_typ typ) in
       return (Value (name, typ_vars, typ))
     | Sig_type (ident, { type_params; _ }, _, _) ->
@@ -79,10 +79,10 @@ let of_first_class_types_signature
     PathName.of_path_and_name_with_convert signature_path name in
   set_env final_env (
   signature |> Monad.List.filter_map (function
-    | Types.Sig_value (ident, { val_type; _ }, _) ->
+    | Types.Sig_value (ident, { val_type; val_loc; _ }, _) ->
       let* name = Name.of_ident true ident in
       get_field_path_name name >>= fun field_path_name ->
-      Type.of_typ_expr true Name.Map.empty val_type >>= fun (typ, _, new_typ_vars) ->
+      Type.of_typ_expr true Name.Map.empty val_type val_loc >>= fun (typ, _, new_typ_vars) ->
       return (Some (
         IncludedFieldValue (
           name,
@@ -152,9 +152,9 @@ let rec of_signature (signature : Typedtree.signature) : t Monad.t =
           (class_signature.csig_fields |> Monad.List.filter_map (fun class_typ_field ->
             set_loc (Loc.of_location class_typ_field.Typedtree.ctf_loc) (
             match class_typ_field.ctf_desc with
-            | Tctf_method (field_name, _, _, { ctyp_type; _ }) ->
+            | Tctf_method (field_name, _, _, { ctyp_type; ctyp_loc; _ }) ->
               let* field_name = Name.of_string false field_name in
-              Type.of_typ_expr false Name.Map.empty ctyp_type
+              Type.of_typ_expr false Name.Map.empty ctyp_type ctyp_loc
                 >>= fun (field_typ, _, _) ->
               return (Some (field_name, field_typ))
             | _ ->
@@ -268,9 +268,9 @@ let rec of_signature (signature : Typedtree.signature) : t Monad.t =
         [Error ("extensible_type_definition `" ^ Path.last tyext_path ^ "`")]
         ExtensibleType
         "We do not handle extensible types"
-    | Tsig_value { val_id; val_desc = { ctyp_type; _ }; _ } ->
+    | Tsig_value { val_id; val_desc = { ctyp_type; _ }; val_loc; _ } ->
       let* name = Name.of_ident true val_id in
-      Type.of_typ_expr true Name.Map.empty ctyp_type >>= fun (typ, _, _) ->
+      Type.of_typ_expr true Name.Map.empty ctyp_type val_loc >>= fun (typ, _, _) ->
       let typ_vars = Name.Set.elements (Type.typ_args_of_typ typ) in
       return [Value (name, typ_vars, typ)])) in
   Monad.List.fold_right

@@ -99,6 +99,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
       top_level_evaluation_error
     | Tstr_eval _ -> top_level_evaluation_error
     | Tstr_value (is_rec, cases) ->
+      print_string "Tstr_value\n";
       push_env (
       Exp.import_let_fun Name.Map.empty true is_rec cases >>= fun def ->
       return [Value def])
@@ -167,9 +168,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
             NotSupported
             "This kind of signature is not handled."
       end
-    | Tstr_primitive { val_id; val_val = { val_type; _ }; _ } ->
+    | Tstr_primitive { val_id; val_val = { val_type; val_loc; _ }; _ } ->
       let* name = Name.of_ident true val_id in
-      Type.of_typ_expr true Name.Map.empty val_type >>= fun (typ, _, free_typ_vars) ->
+      Type.of_typ_expr true Name.Map.empty val_type val_loc >>= fun (typ, _, free_typ_vars) ->
       return [AbstractValue (name, Name.Set.elements free_typ_vars, typ)]
     | Tstr_typext _ ->
       error_message

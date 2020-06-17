@@ -113,9 +113,9 @@ module ModuleTypValues = struct
     | Mty_signature signature ->
       signature |> Monad.List.filter_map (fun item ->
         match item with
-        | Types.Sig_value (ident, { val_type; _ }, _) ->
+        | Types.Sig_value (ident, { val_type; val_loc; _ }, _) ->
           let* ident = Name.of_ident true ident in
-          Type.of_typ_expr true typ_vars val_type >>= fun (_, _, new_typ_vars) ->
+          Type.of_typ_expr true typ_vars val_type val_loc >>= fun (_, _, new_typ_vars) ->
           return (Some (Value (
             ident,
             Name.Set.cardinal new_typ_vars
@@ -380,7 +380,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
       SideEffect
       "Let of exception is not handled"
   | Texp_assert e' ->
-    Type.of_typ_expr false typ_vars e.exp_type >>= fun (typ, _, _) ->
+    Type.of_typ_expr false typ_vars e.exp_type e.exp_loc >>= fun (typ, _, _) ->
     of_expression typ_vars e' >>= fun e' ->
     error_message
       (Assert (typ, e'))
@@ -438,13 +438,13 @@ and of_match
     Type.existential_typs_of_typs (List.map snd bound_vars) >>= fun existentials ->
     Monad.List.map
       (fun (name, typ) ->
-        Type.of_typ_expr true typ_vars typ >>= fun (typ, _, _) ->
+        Type.of_typ_expr true typ_vars typ c_rhs.exp_loc >>= fun (typ, _, _) ->
         return (name, typ)
       )
       bound_vars >>= fun bound_vars ->
     let free_vars = Type.local_typ_constructors_of_typs (List.map snd bound_vars) in
     let existentials = Name.Set.inter existentials free_vars in
-    Type.of_typ_expr true typ_vars c_rhs.exp_type >>= fun (typ, _, _) ->
+    Type.of_typ_expr true typ_vars c_rhs.exp_type c_rhs.exp_loc >>= fun (typ, _, _) ->
     let existential_cast =
       Some {
         new_typ_vars = Name.Set.elements existentials;
@@ -545,11 +545,16 @@ and import_let_fun
     Pattern.of_pattern p >>= fun p ->
     (match p with
     | Some Pattern.Any -> return None
-    | Some (Pattern.Variable x) -> return (Some x)
+    | Some (Pattern.Variable x) -> print_string (Name.to_string x); return (Some x)
     | _ ->
       raise None Unexpected "A variable name instead of a pattern was expected."
     ) >>= fun x ->
-    Type.of_typ_expr true typ_vars vb_expr.exp_type >>= fun (e_typ, typ_vars, new_typ_vars) ->
+    print_string "\nentering of_typ_expr vb_expr\n";
+    print_string ("\nsize of extra: ");
+    print_int (List.length vb_expr.exp_extra);
+    print_string "\n";
+    let (_, loc, _) = List.nth vb_expr.exp_extra 0 in
+    Type.of_typ_expr true typ_vars vb_expr.exp_type loc >>= fun (e_typ, typ_vars, new_typ_vars) ->
     match x with
     | None -> return None
     | Some x ->
@@ -612,12 +617,12 @@ and of_let
       "Top-level evaluations are ignored"
   | _ ->
     begin match cases with
-    | [{ vb_expr = { exp_desc; exp_type; _ }; _ }] when
+    | [{ vb_expr = { exp_desc; exp_type; exp_loc; _ }; _ }] when
       begin match exp_desc with
       | Texp_function _ -> false
       | _ -> true
       end ->
-      Type.of_typ_expr true typ_vars exp_type >>= fun (_, _, new_typ_vars) ->
+      Type.of_typ_expr true typ_vars exp_type exp_loc >>= fun (_, _, new_typ_vars) ->
       return (Name.Set.cardinal new_typ_vars <> 0)
     | _ -> return true
     end >>= fun is_function ->
@@ -905,13 +910,14 @@ and of_structure
                 type_kind = Type_abstract;
                 type_manifest = Some typ;
                 type_params;
+                type_loc;
                 _
               };
               _
             } ->
             let* name = Name.of_ident false typ_id in
             (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args ->
-            Type.of_type_expr_without_free_vars typ >>= fun typ ->
+            Type.of_type_expr_without_free_vars typ type_loc >>= fun typ ->
             return (LetTyp (name, typ_args, typ, e_next))
           | _ ->
             raise
@@ -1012,8 +1018,8 @@ and of_include
       let is_value =
         match signature_item with Sig_value _ -> true | _ -> false in
       begin match signature_item with
-      | Sig_value (_, { Types.val_type; _ }, _) ->
-        Type.of_typ_expr true typ_vars val_type >>= fun (_, _, new_typ_vars) ->
+      | Sig_value (_, { Types.val_type; val_loc; _ }, _) ->
+        Type.of_typ_expr true typ_vars val_type val_loc >>= fun (_, _, new_typ_vars) ->
         return (Name.Set.elements new_typ_vars)
       | _ -> return []
       end >>= fun typ_vars ->

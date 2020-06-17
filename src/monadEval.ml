@@ -45,18 +45,21 @@ module Context = struct
     adtEnv : AdtEnv.t;
     env_stack : EnvStack.t;
     loc : Loc.t;
+    pipeline : Mpipeline.t
   }
 
   let init
     (configuration : Configuration.t)
     (initial_env : Env.t)
     (initial_loc : Loc.t)
+    (pipeline : Mpipeline.t)
     : t = {
     configuration;
     env = initial_env;
     adtEnv = AdtEnv.TypeHashtbl.create 100;
     env_stack = [];
     loc = initial_loc;
+    pipeline = pipeline;
   }
 end
 
@@ -77,6 +80,7 @@ module Command = struct
         let ev = AdtEnv.TypeHashtbl.find context.adtEnv ty in
         Result.success ev
       | GetLoc -> Result.success context.loc
+      | GetPipeline -> Result.success context.pipeline
       | Raise (value, category, message) ->
         let result = Result.success value in
         let errors =

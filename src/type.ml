@@ -154,13 +154,67 @@ and non_phantom_vars_of_typs (typs : Types.type_expr list)
     Name.Set.empty
     typs
 
+
+let reconstruct_identifier pipeline pos = function
+  | None ->
+    let path = Mreader.reconstruct_identifier
+        (Mpipeline.input_config pipeline)
+        (Mpipeline.raw_source pipeline)
+        pos
+    in
+    let path = Mreader_lexer.identifier_suffix path in
+    let reify dot =
+      if dot = "" ||
+         (dot.[0] >= 'a' && dot.[0] <= 'z') ||
+         (dot.[0] >= 'A' && dot.[0] <= 'Z')
+      then dot
+      else "(" ^ dot ^ ")"
+    in
+    begin match path with
+      | [] -> []
+      | base :: tail ->
+        let f {Location. txt=base; loc=bl} {Location. txt=dot; loc=dl} =
+          let loc = Location_aux.union bl dl in
+          let txt = base ^ "." ^ reify dot in
+          Location.mkloc txt loc
+        in
+        [ List.fold_left f base tail ]
+    end
+  | Some (expr, offset) ->
+    let loc_start =
+      let l, c = Std.Lexing.split_pos pos in
+      Std.Lexing.make_pos (l, c - offset)
+    in
+    let shift loc int =
+      let l, c = Std.Lexing.split_pos loc in
+      Std.Lexing.make_pos (l, c + int)
+    in
+    let add_loc source =
+      let loc =
+        { Location.
+          loc_start ;
+          loc_end = shift loc_start (String.length source) ;
+          loc_ghost = false ;
+        } in
+      Location.mkloc source loc
+    in
+    let len = String.length expr in
+    let rec aux acc i =
+      if i >= len then
+        Std.List.rev_map ~f:add_loc (expr :: acc)
+      else if expr.[i] = '.' then
+        aux (Std.String.sub expr ~pos:0 ~len:i :: acc) (succ i)
+      else
+        aux acc (succ i) in
+    aux [] offset
+
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr
   (with_free_vars: bool)
   (typ_vars : Name.t Name.Map.t)
   (typ : Types.type_expr)
+  (loc : Location.t)
   : (t * Name.t Name.Map.t * Name.Set.t) Monad.t =
-  print_string "of_typ_expr\n";
   match typ.desc with
   | Tvar x | Tunivar x ->
     (match x with
@@ -184,28 +238,89 @@ let rec of_typ_expr
       ) in
     return (Variable name, typ_vars, new_typ_vars)
   | Tarrow (_, typ_x, typ_y, _) ->
-    of_typ_expr with_free_vars typ_vars typ_x >>= fun (typ_x, typ_vars, new_typ_vars_x) ->
-    of_typ_expr with_free_vars typ_vars typ_y >>= fun (typ_y, typ_vars, new_typ_vars_y) ->
+    of_typ_expr with_free_vars typ_vars typ_x loc >>= fun (typ_x, typ_vars, new_typ_vars_x) ->
+    of_typ_expr with_free_vars typ_vars typ_y loc >>= fun (typ_y, typ_vars, new_typ_vars_y) ->
     return (Arrow (typ_x, typ_y), typ_vars, Name.Set.union new_typ_vars_x new_typ_vars_y)
   | Ttuple typs ->
-    of_typs_exprs with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
+    of_typs_exprs with_free_vars typ_vars typs loc >>= fun (typs, typ_vars, new_typ_vars) ->
     return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, _) ->
-    print_string ((Path.name path) ^ "\n");
-    (* print_string "x\n"; *)
+    let* pipeline = get_pipeline in
+    let* env = get_env in
+    (* let* loc' = get_loc in *)
+    (* let loc' = (`Logical (loc.loc_start, loc.loc_end)) in *)
+    (* let pos = Mpipeline.get_lexing_pos pipeline loc' in *)
+    print_string "loc_start.fname: ";
+    print_string loc.loc_start.pos_fname;
+    print_string "\nloc_start.pos_lnum: ";
+    print_int loc.loc_start.pos_lnum;
+    print_string "\nloc_start.cnum: ";
+    print_int loc.loc_start.pos_cnum;
+    print_string "\nloc_start.pos_bol: ";
+    print_int loc.loc_start.pos_bol;
+    print_string "\nloc_end.fname: ";
+    print_string loc.loc_end.pos_fname;
+    print_string "\nloc_end.pos_lnum: ";
+    print_int loc.loc_end.pos_lnum;
+    print_string "\nloc_end.cnum: ";
+    print_int loc.loc_end.pos_cnum;
+    print_string "\nloc_end.pos_bol: ";
+    print_int loc.loc_end.pos_bol;
+
+
+    (* print_string "\nloc'.start.line: ";
+     * print_int loc'.start.line;
+     * print_string "\nloc'.start.char: ";
+     * print_int loc'.start.character;
+     * print_string "\nloc'.end_.line: ";
+     * print_int loc'.end_.line;
+     * print_string "\nloc'.end_.char: ";
+     * print_int loc'.end_.character;
+     * print_string "\n"; *)
+
+    let path' = reconstruct_identifier pipeline loc.loc_start None in
+    let path' = Mreader_lexer.identifier_suffix path' in
+    let path' = Std.List.map ~f:(fun {Location. txt; _} -> txt) path' in
+    let path' = Std.String.concat ~sep:"." path' in
+(* print_string ((Path.name path) ^ "\n"); *)
+    let mod_path = Env.normalize_module_path (Some loc) env path in
+    let typ_path = Env.normalize_type_path (Some loc) env path in
+    let pat_path = Env.normalize_path_prefix (Some loc) env path in
+    assert(mod_path = typ_path);
+    assert(typ_path = pat_path);
+    (* print_string ((Path.name path') ^ "\n"); *)
     (* Format.print_cut (); *)
-    (* Path.print Format.std_formatter path; *)
-    (* Format.close_box (); *)
+    print_string "\nregular    path: ";
+    Printtyp.path Format.std_formatter path;
+    Format.print_newline ();
+
+    print_string "Oprint    path: ";
+    let pp = !Oprint.out_ident in
+    pp Format.std_formatter (Printtyp.tree_of_path path);
+    Format.print_newline ();
+
+    print_string "full       path': ";
+    print_string path';
+    Format.print_newline ();
+    (* print_string "module     path: "; *)
+    (* Path.print Format.std_formatter mod_path; *)
     (* Format.print_newline (); *)
+    (* print_string "normalized path: "; *)
+    (* Path.print Format.std_formatter typ_path; *)
+    (* Format.print_newline (); *)
+    (* print_string "path       path: "; *)
+    (* Path.print Format.std_formatter pat_path; *)
+    (* Format.close_box (); *)
+    Format.print_newline ();
     (* print_string "\n"; *)
     non_phantom_typs path typs >>= fun typs ->
-    of_typs_exprs with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
+    of_typs_exprs with_free_vars typ_vars typs loc >>= fun (typs, typ_vars, new_typ_vars) ->
     MixedPath.of_path false path None >>= fun mixed_path ->
     return (Apply (mixed_path, typs), typ_vars, new_typ_vars)
   | Tobject (_, object_descr) ->
     begin match !object_descr with
     | Some (path, _ :: typs) ->
-      of_typs_exprs with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
+      of_typs_exprs with_free_vars typ_vars typs loc >>= fun (typs, typ_vars, new_typ_vars) ->
       MixedPath.of_path false path None >>= fun mixed_path ->
       return (Apply (mixed_path, typs), typ_vars, new_typ_vars)
     | _ ->
@@ -215,8 +330,8 @@ let rec of_typ_expr
         "We do not handle this form of object types"
     end
   | Tfield (_, _, typ1, typ2) ->
-    of_typ_expr with_free_vars typ_vars typ1 >>= fun (typ1, typ_vars, new_typ_vars1) ->
-    of_typ_expr with_free_vars typ_vars typ2 >>= fun (typ2, typ_vars, new_typ_vars2) ->
+    of_typ_expr with_free_vars typ_vars typ1 loc >>= fun (typ1, typ_vars, new_typ_vars1) ->
+    of_typ_expr with_free_vars typ_vars typ2 loc >>= fun (typ2, typ_vars, new_typ_vars2) ->
     raise
       (
         Tuple [typ1; typ2],
@@ -229,7 +344,7 @@ let rec of_typ_expr
       (Error "nil", typ_vars, Name.Set.empty)
       NotSupported
       "Nil type is not handled"
-  | Tlink typ | Tsubst typ -> of_typ_expr with_free_vars typ_vars typ
+  | Tlink typ | Tsubst typ -> of_typ_expr with_free_vars typ_vars typ loc
   | Tvariant { row_fields; _ } ->
     print_string "tvariant\n";
     PathName.typ_of_variants (List.map fst row_fields) >>= fun path_name ->
@@ -244,7 +359,7 @@ let rec of_typ_expr
       Monad.List.fold_left
         (fun (fields, typ_vars, new_typ_vars) (name, row_field) ->
           let typs = type_exprs_of_row_field row_field in
-          of_typs_exprs with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars') ->
+          of_typs_exprs with_free_vars typ_vars typs loc >>= fun (typs, typ_vars, new_typ_vars') ->
           return (
             (name, Tuple typs) :: fields,
             typ_vars,
@@ -263,7 +378,7 @@ let rec of_typ_expr
     let typ_args = typ_args |> List.filter (fun typ_arg ->
       Name.Set.mem typ_arg non_phantom_vars
     ) in
-    of_typ_expr with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars_typ) ->
+    of_typ_expr with_free_vars typ_vars typ loc >>= fun (typ, typ_vars, new_typ_vars_typ) ->
     let new_typ_vars_typ = Name.Set.diff non_phantom_vars new_typ_vars_typ in
     return (ForallTyps (typ_args, typ), typ_vars, new_typ_vars_typ)
   | Tpackage (path, idents, typs) ->
@@ -272,7 +387,7 @@ let rec of_typ_expr
       Monad.List.fold_left
         (fun (typ_substitutions, typ_vars, new_typ_vars) (ident, typ) ->
           let* path_name = PathName.of_long_ident false ident in
-          of_typ_expr with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') ->
+          of_typ_expr with_free_vars typ_vars typ loc >>= fun (typ, typ_vars, new_typ_vars') ->
           return (
             (path_name, typ) :: typ_substitutions,
             typ_vars,
@@ -297,10 +412,11 @@ and of_typs_exprs
   (with_free_vars: bool)
   (typ_vars : Name.t Name.Map.t)
   (typs : Types.type_expr list)
+  (loc : Location.t)
   : (t list * Name.t Name.Map.t * Name.Set.t) Monad.t =
   (Monad.List.fold_left
     (fun (typs, typ_vars, new_typ_vars) typ ->
-      of_typ_expr with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') ->
+      of_typ_expr with_free_vars typ_vars typ loc >>= fun (typ, typ_vars, new_typ_vars') ->
       return (typ :: typs, typ_vars, Name.Set.union new_typ_vars new_typ_vars')
     )
     ([], typ_vars, Name.Set.empty)
@@ -318,8 +434,10 @@ let rec of_type_expr_variable (typ : Types.type_expr) : Name.t Monad.t =
       NotSupported
       "Only type variables are supported as parameters."
 
-let of_type_expr_without_free_vars (typ : Types.type_expr) : t Monad.t =
-  of_typ_expr false Name.Map.empty typ >>= fun (typ, _, _) ->
+let of_type_expr_without_free_vars (typ : Types.type_expr)
+    (loc : Location.t)
+  : t Monad.t =
+  of_typ_expr false Name.Map.empty typ loc >>= fun (typ, _, _) ->
   return typ
 
 (** We do not generate error messages for this function. Indeed, if there are

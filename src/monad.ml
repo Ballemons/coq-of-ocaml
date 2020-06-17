@@ -15,6 +15,7 @@ module Command = struct
         Types.type_expr ->
         AdtEnv.variable list t
     | GetLoc : Loc.t t
+    | GetPipeline : Mpipeline.t t
     | Raise : 'a * Error.Category.t * string -> 'a t
     | Use : bool * string * string -> unit t
 end
@@ -54,6 +55,9 @@ module Notations = struct
 
   let get_env_stack : Env.t list t =
     Command Command.GetEnvStack
+
+  let get_pipeline : Mpipeline.t t =
+    Command Command.GetPipeline
 
   let get_loc : Loc.t t =
     Command Command.GetLoc
