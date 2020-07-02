@@ -12,9 +12,6 @@ module AdtVariable = struct
     | Tvar x | Tunivar x ->
       begin match x with
         | None | Some "_" -> return Unknown
-        (* | Some "_" -> *)
-          (* Name.of_string false "unit" >>= fun x -> *)
-          (* return (Parameter x) *)
         | Some x ->
           Name.of_string false x >>= fun x ->
           return (Parameter x)

@@ -19,24 +19,6 @@ and arity_or_typ =
   | Typ of t
 
 
-let rec rename (f : Name.t -> Name.t) : t -> t = function
-  | Variable a -> Variable (f a)
-  | Arrow (t1, t2) -> Arrow (rename f t1, rename f t2)
-  | Sum ls ->
-    let (s, ts) = List.split ls in
-    let ts = List.map (rename f) ts in
-    Sum (List.combine s ts)
-  | Tuple ts -> Tuple (List.map (rename f) ts)
-  | Apply (s, ts) ->
-    let ts = List.map (rename f) ts in
-    Apply (s, ts)
-  (* Do I need to rename n? *)
-  | ForallModule (n, t1,t2) -> ForallModule (n, rename f t1, rename f t2)
-  | ForallTyps (n, t) -> ForallTyps (n, rename f t)
-  | FunTyps (n, t) -> FunTyps (n, rename f t)
-  | _ as t -> t
-
-
 let to_string : t -> string = function
   | Variable _ -> "Var"
   | Arrow _ -> "Arrow"
@@ -287,13 +269,7 @@ and existential_typs_of_typs (typs : Types.type_expr list)
 (** The free variables of a type. *)
 let rec typ_args_of_typ (typ : t) : Name.Set.t =
   match typ with
-  | Variable x ->
-    begin match x with
-      | Make x when x = "unit" ->
-        Name.Set.empty
-    | _ ->
-      Name.Set.singleton x
-    end
+  | Variable x -> Name.Set.singleton x
   | Arrow (typ1, typ2) -> typ_args_of_typs [typ1; typ2]
   | Sum typs -> typ_args_of_typs (List.map snd typs)
   | Tuple typs | Apply (_, typs) -> typ_args_of_typs typs
