@@ -4,10 +4,6 @@ type ('a , 'b) foo =
   | Bar : 'a * int * 'b * 'c -> ('b, string) foo
   | Other of int
 
-type _ lex =
-  | Clex : int -> int lex
-  | Clex2 of int
-
 type 'a expr =
   | Int : int -> int expr
   | String : string -> string expr
