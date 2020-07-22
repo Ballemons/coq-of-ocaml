@@ -7,6 +7,15 @@ type t =
   | Access of PathName.t * PathName.t list * bool
   | PathName of PathName.t
 
+let dec_name : t -> t = function
+  | Access (path, fields, b) ->
+    let fields = List.rev fields in
+    begin match List.nth_opt fields 0 with
+      | None -> Access (PathName.dec_name path, [], b)
+      | Some last_path -> Access (path, List.rev (PathName.dec_name last_path :: List.tl fields), b)
+    end
+  | PathName path -> PathName (PathName.dec_name path)
+
 (** Shortcut to introduce new local variables for example. *)
 let of_name (name : Name.t) : t =
   PathName (PathName.of_name [] name)

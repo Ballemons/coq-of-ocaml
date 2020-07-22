@@ -122,7 +122,7 @@ let build_tags :
     let header : Exp.Header.t = {
       name = Name.prefix_by_dec name;
       typ_vars = Name.Map.empty;
-      args = [(tag_var, Type.Variable name)];
+      args = [(tag_var, Type.Variable (Name.suffix_by_tags name))];
       structs = [];
       typ = Some (Type.Kind Kind.Set);
     } in

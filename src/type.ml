@@ -79,10 +79,10 @@ let find_tag
   | None -> Map.find (Variable (Name.of_string_raw "a")) m |> fst
   | Some (name, _) -> name
 
-let name_of_tags
-    (type_constr : Name.t)
-  : Name.t =
-  Name.suffix_by_tags type_constr
+(* let name_of_tags *)
+    (* (type_constr : Name.t) *)
+  (* : Name.t = *)
+  (* Name.suffix_by_tags type_constr *)
 
 let get_args_of
     (path : Path.t)
@@ -142,7 +142,7 @@ let tags_of_typs
         Map.add typ (constructor_name, typ_vars) mapping
       else mapping
     ) Map.empty in
-  { name = name_of_tags name;
+  { name;
     constructors }
 
 
@@ -174,15 +174,6 @@ let rec tag_typ_constr_aux
     let tag = find_tag typ tag_constrs |> MixedPath.of_name in
     return @@ Apply (tag, ts)
   | _ -> return typ
-
-let get_tags_name
-    (path : Path.t)
-  : Path.t =
-  let name = Path.last path in
-  let name = name ^ "_" ^ "tag" in
-  let hds = Path.heads path in
-  List.fold_right (fun prefix suffix ->
-      Path.Pdot (Pident prefix, Path.name suffix)) hds (Path.Pident (Ident.create_local name))
 
 let type_exprs_of_row_field (row_field : Types.row_field)
   : Types.type_expr list =
@@ -218,9 +209,11 @@ let rec of_typ_expr_in_constr
     ) >>= fun (source_name, generated_name) ->
     let* source_name = Name.of_string false source_name in
     let* generated_name = Name.of_string false generated_name in
-    let typ = match constr with
-      | None -> Kind.Set
-      | Some path -> Kind.Tag (name_of_tags (Name.of_last_path path)) in
+    let* typ = match constr with
+      | None -> return Kind.Set
+      | Some path ->
+        let* mpath = MixedPath.of_path false path None in
+        return (Kind.Tag mpath) in
     let new_typ_vars = Name.Map.singleton generated_name typ in
     let (typ_vars, name) =
       if Name.Map.mem source_name typ_vars
@@ -340,7 +333,7 @@ and get_tags_of
       let* (typs, _, _) = of_typs_exprs_constr (Some path) true Name.Map.empty typs in
       return @@ tags_of_typs name typs
     | _ | exception Not_found ->
-      raise { name = name_of_tags name; constructors = Map.empty }
+      raise { name = Name.suffix_by_tags name; constructors = Map.empty }
                      Error.Category.Unexpected "Could not find type declaration"
   end
 
@@ -373,29 +366,47 @@ and of_typs_exprs_constr
 
 let rec decode_var_tags
     (typ_vars : Kind.t Name.Map.t)
+    (constr: MixedPath.t option)
     (typ : t)
-  : t =
-  let dec = decode_var_tags typ_vars in
+  : t Monad.t =
+  let dec = decode_var_tags typ_vars constr in
   match typ with
-  | Variable name -> print_string "decoding "; print_string @@ Name.to_string name ^ "\n";
-    begin match Name.Map.find_opt name typ_vars with
-    | None -> print_string "!\n"; typ
-    | Some Kind.Set -> print_string "?\n"; typ
-    | Some (Kind.Tag tag_name) -> Apply (MixedPath.of_name @@ Name.prefix_by_dec tag_name, [typ])
+  | Variable name ->
+    begin
+      match constr with
+      | None -> begin match Name.Map.find_opt name typ_vars with
+          | None -> return typ
+          | Some Kind.Set -> return typ
+          | Some (Kind.Tag mpath) ->
+            let decname = MixedPath.dec_name mpath in
+            return @@ Apply (decname, [typ])
+        end
+      | Some _ ->
+        (* TODO: Add coercions treatment *)
+        return typ
     end
   | Arrow (t1, t2) ->
-    Arrow (dec t1, dec t2)
+    let* t1 = dec t1 in
+    let* t2 = dec t2 in
+    return @@ Arrow (t1, t2)
   | Tuple ts ->
-    Tuple (List.map dec ts)
+    let* ts = Monad.List.map dec ts in
+    return @@ Tuple ts
   | Apply (mpath, ts) ->
-    Apply (mpath, List.map dec ts)
+    let dec = decode_var_tags typ_vars (Some mpath) in
+    let* ts = Monad.List.map dec ts in
+    return @@ Apply (mpath, ts)
   | ForallModule (name, t1, t2) ->
-    ForallModule (name, dec t1, dec t2)
+    let* t1 = dec t1 in
+    let* t2 = dec t2 in
+    return @@ ForallModule (name, t1, t2)
   | ForallTyps (names, t) ->
-    ForallTyps (names, dec t)
+    let* t = dec t in
+    return @@ ForallTyps (names, t)
   | FunTyps (names, t) ->
-    FunTyps (names, dec t)
-  | _ -> typ
+    let* t = dec t in
+    return @@ FunTyps (names, t)
+  | _ -> return typ
 
 let of_typ_expr
   (with_free_vars: bool)
@@ -410,7 +421,6 @@ let of_typs_exprs
   (typs : Types.type_expr list)
   : (t list * Name.t Name.Map.t * Kind.t Name.Map.t) Monad.t =
   of_typs_exprs_constr None with_free_vars typ_vars typs
-
 
 let rec of_type_expr_variable (typ : Types.type_expr) : Name.t Monad.t =
   match typ.desc with
@@ -478,8 +488,8 @@ and existential_typs_of_typs (typs : Types.type_expr list)
 (** The free variables of a type. *)
 let rec typ_args_of_typ (typ : t) : Name.Set.t =
   match typ with
-  | Variable x | Kind Kind.Tag x -> Name.Set.singleton x
-  | Kind Kind.Set-> Name.Set.empty
+  | Variable x -> Name.Set.singleton x
+  | Kind Kind.Set | Kind Kind.Tag _ -> Name.Set.empty
   | Arrow (typ1, typ2) -> typ_args_of_typs [typ1; typ2]
   | Sum typs -> typ_args_of_typs (List.map snd typs)
   | Tuple typs | Apply (_, typs) -> typ_args_of_typs typs
@@ -506,9 +516,9 @@ and typ_args_of_typs (typs : t list) : Name.Set.t =
     types. *)
 let rec local_typ_constructors_of_typ (typ : t) : Name.Set.t =
   match typ with
-  | Variable x | Kind Kind.Tag x -> Name.Set.singleton x
+  | Variable x -> Name.Set.singleton x
   | Arrow (typ1, typ2) -> local_typ_constructors_of_typs [typ1; typ2]
-  | Kind Kind.Set -> Name.Set.empty
+  | Kind Kind.Set | Kind Kind.Tag _ -> Name.Set.empty
   | Sum typs -> local_typ_constructors_of_typs (List.map snd typs)
   | Tuple typs -> local_typ_constructors_of_typs typs
   | Apply (mixed_path, typs) ->
@@ -598,13 +608,13 @@ end
 let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
   : SmartPrint.t =
   match typ with
-  | Variable x | Kind Kind.Tag x ->
+  | Variable x  ->
     let x =
       match subst with
       | None -> x
       | Some subst -> subst.name x in
     Name.to_coq x
-  | Kind Kind.Set -> Pp.set
+  | Kind k -> Kind.to_coq k
   | Arrow _ ->
     let (typ_xs, typ_y) = accumulate_nested_arrows typ in
     Context.parens context Context.Arrow @@ group (

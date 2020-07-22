@@ -557,6 +557,7 @@ and import_let_fun
     | Some name ->
       of_expression typ_vars vb_expr >>= fun e ->
       let (args_names, e_body) = open_function e in
+      let* e_typ = Type.decode_var_tags new_typ_vars None e_typ in
       let (args_typs, e_body_typ) = Type.open_type e_typ (List.length args_names) in
       (* let args_typs = List.map (Tags.tag_type) args_typs in *)
       get_configuration >>= fun configuration ->

@@ -192,11 +192,14 @@ module Single = struct
         | None -> return (List.map (fun v -> Type.Variable v) defined_typ_params, Name.Map.empty)
       in
       let typ_vars = Name.Map.union Type.typ_union typ_vars new_typ_vars in
+      let typ_name = MixedPath.of_name typ_name in
+      let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None) param_typs in
+      let* return_typ_params = Monad.List.map (Type.decode_var_tags typ_vars (Some typ_name)) return_typ_params in
       return (
         {
           constructor_name;
-          param_typs = List.map (Type.decode_var_tags typ_vars) param_typs;
-          return_typ_params = List.map (Type.decode_var_tags typ_vars) return_typ_params;
+          param_typs;
+          return_typ_params;
           typ_vars;
         },
         records
@@ -256,11 +259,8 @@ let from_tags (tags : Type.tags) : Name.t * Type.t list * t =
        let vars_typ  = match typ with
          | Type.Variable _ -> Kind.Set
          | Apply (mpath, _) ->
-           (* FIXME: This will fail if mpath is an access *)
-           let name = MixedPath.to_string mpath in
-           let name = name |> Name.of_string_raw |> Type.name_of_tags in
-           Kind.Tag name
-         | _ -> Kind.Tag name in
+           Kind.Tag mpath
+         | _ -> Kind.Tag (MixedPath.of_name name) in
        let typ_vars = List.fold_left (fun acc arg_name ->
            Name.Map.add arg_name vars_typ acc)
            Name.Map.empty arg_names in
@@ -269,4 +269,4 @@ let from_tags (tags : Type.tags) : Name.t * Type.t list * t =
         res_typ_params = [];
         typ_vars = typ_vars
        })) |> List.split in
-    (name, typs, items)
+    (Name.suffix_by_tags name, typs, items)
