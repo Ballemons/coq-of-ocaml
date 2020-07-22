@@ -96,7 +96,7 @@ type item = {
   param_typs : Type.t list; (** The parameters of the constructor. *)
   res_typ_params : Type.t list;
   (** The type parameters of the result type of the constructor. *)
-  typ_vars : Type.t Name.Map.t; (** The polymorphic type variables. *)
+  typ_vars : Kind.t Name.Map.t; (** The polymorphic type variables. *)
 }
 
 (* We can probably get rid of this now *)
@@ -109,7 +109,7 @@ module Single = struct
     return_typ_params : Type.t list;
     (** The return type, in case of GADT constructor, with some inference to
         rule-out GADTs with only existential variables. *)
-    typ_vars : Type.t Name.Map.t;
+    typ_vars : Kind.t Name.Map.t;
   }
 
   let of_ocaml_case
@@ -195,8 +195,8 @@ module Single = struct
       return (
         {
           constructor_name;
-          param_typs;
-          return_typ_params;
+          param_typs = List.map (Type.decode_var_tags typ_vars) param_typs;
+          return_typ_params = List.map (Type.decode_var_tags typ_vars) return_typ_params;
           typ_vars;
         },
         records
@@ -254,13 +254,13 @@ let from_tags (tags : Type.tags) : Name.t * Type.t list * t =
   let (typs, items) = constructors |> List.map (fun (typ, (constructor_name, arg_names)) ->
       (typ,
        let vars_typ  = match typ with
-         | Type.Variable _ -> Type.Kind Kind.Set
+         | Type.Variable _ -> Kind.Set
          | Apply (mpath, _) ->
            (* FIXME: This will fail if mpath is an access *)
            let name = MixedPath.to_string mpath in
            let name = name |> Name.of_string_raw |> Type.name_of_tags in
-           Type.Variable name
-         | _ -> Type.Variable name in
+           Kind.Tag name
+         | _ -> Kind.Tag name in
        let typ_vars = List.fold_left (fun acc arg_name ->
            Name.Map.add arg_name vars_typ acc)
            Name.Map.empty arg_names in

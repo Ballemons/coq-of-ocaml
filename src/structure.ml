@@ -26,12 +26,14 @@ module Value = struct
           end ^^
           let { Exp.Header.name; typ_vars; args; typ; _ } = header in
           Name.to_coq name ^^
-          begin match typ_vars with
-          | [] -> empty
-          | _ :: _ ->
-            braces @@ group (separate space (List.map (fun typ -> Name.to_coq @@ fst typ) typ_vars) ^^
-            !^ ":" ^^ Pp.set)
-          end ^^
+          Type.typ_vars_to_coq braces empty empty typ_vars
+          (* begin match typ_vars with *)
+          (* | [] -> empty *)
+          (* | _ :: _ ->  *)
+          (* braces @@ group (separate space (List.map (fun typ -> Name.to_coq @@ fst typ) typ_vars) ^^ *)
+          (* !^ ":" ^^ Type.to_coq Pp.set) *)
+          (* end *)
+               ^^
           group (separate space (args |> List.map (fun (x, t) ->
             parens @@ nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None t)
           ))) ^^
@@ -119,7 +121,7 @@ let build_tags :
                    None, Exp.Type rhs)) in
     let header : Exp.Header.t = {
       name = Name.prefix_by_dec name;
-      typ_vars = [];
+      typ_vars = Name.Map.empty;
       args = [(tag_var, Type.Variable name)];
       structs = [];
       typ = Some (Type.Kind Kind.Set);

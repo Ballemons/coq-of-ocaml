@@ -47,18 +47,19 @@ module Map = Map.Make (struct
   let compare = compare
 end)
 
-let group_by_type
-    (m : t Name.Map.t)
-  : Name.t list Map.t =
+let group_by_kind
+    (m : Kind.t Name.Map.t)
+  : ((Kind.t * Name.t list) list) =
   let elements = Name.Map.bindings m in
-  elements |> List.fold_left (fun map (name, typ) ->
-      if Map.mem typ map
+  elements |> List.fold_left (fun acc (name, kind) ->
+      if List.mem_assoc kind acc
       then
-        let l = Map.find typ map in
-        Map.add typ (name :: l) map
+        let l = List.assoc kind acc in
+        let acc = List.remove_assoc kind acc in
+        (kind, (name :: l)) :: acc
       else
-        Map.add typ [name] map
-    ) Map.empty
+        (kind, [name]) :: acc
+    ) []
 
 (* A tag constructor have a name and arguments *)
 type tag_constructor = (Name.t * Name.t list)
@@ -112,10 +113,10 @@ let tag_constructor_of
 
 
 (* TODO: Rethink specializatin of tag types *)
-let typ_union (name : Name.t) typ1 typ2 : t option =
+let typ_union (name : Name.t) typ1 typ2 : Kind.t option =
   match typ1, typ2 with
-  | Kind Kind.Set , t -> Some t
-  | t, Kind Kind.Set -> Some t
+  | Kind.Set , t -> Some t
+  | t, Kind.Set -> Some t
   | t, _ -> Some t
 
 let arg_num : t -> int = function
@@ -203,7 +204,7 @@ let rec of_typ_expr_in_constr
   (with_free_vars: bool)
   (typ_vars : Name.t Name.Map.t)
   (typ : Types.type_expr)
-  : (t * Name.t Name.Map.t * t Name.Map.t) Monad.t =
+  : (t * Name.t Name.Map.t * Kind.t Name.Map.t) Monad.t =
   match typ.desc with
   | Tvar x | Tunivar x ->
     (match x with
@@ -218,8 +219,8 @@ let rec of_typ_expr_in_constr
     let* source_name = Name.of_string false source_name in
     let* generated_name = Name.of_string false generated_name in
     let typ = match constr with
-      | None -> Kind Kind.Set
-      | Some path -> Variable (name_of_tags (Name.of_last_path path)) in
+      | None -> Kind.Set
+      | Some path -> Kind.Tag (name_of_tags (Name.of_last_path path)) in
     let new_typ_vars = Name.Map.singleton generated_name typ in
     let (typ_vars, name) =
       if Name.Map.mem source_name typ_vars
@@ -358,7 +359,7 @@ and of_typs_exprs_constr
   (with_free_vars: bool)
   (typ_vars : Name.t Name.Map.t)
   (typs : Types.type_expr list)
-  : (t list * Name.t Name.Map.t * t Name.Map.t) Monad.t =
+  : (t list * Name.t Name.Map.t * Kind.t Name.Map.t) Monad.t =
   (Monad.List.fold_left
     (fun (typs, typ_vars, new_typ_vars) typ ->
       of_typ_expr_in_constr path with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') ->
@@ -370,18 +371,44 @@ and of_typs_exprs_constr
   ) >>= fun (typs, typ_vars, new_typ_vars) ->
   return (List.rev typs, typ_vars, new_typ_vars)
 
+let rec decode_var_tags
+    (typ_vars : Kind.t Name.Map.t)
+    (typ : t)
+  : t =
+  let dec = decode_var_tags typ_vars in
+  match typ with
+  | Variable name -> print_string "decoding "; print_string @@ Name.to_string name ^ "\n";
+    begin match Name.Map.find_opt name typ_vars with
+    | None -> print_string "!\n"; typ
+    | Some Kind.Set -> print_string "?\n"; typ
+    | Some (Kind.Tag tag_name) -> Apply (MixedPath.of_name @@ Name.prefix_by_dec tag_name, [typ])
+    end
+  | Arrow (t1, t2) ->
+    Arrow (dec t1, dec t2)
+  | Tuple ts ->
+    Tuple (List.map dec ts)
+  | Apply (mpath, ts) ->
+    Apply (mpath, List.map dec ts)
+  | ForallModule (name, t1, t2) ->
+    ForallModule (name, dec t1, dec t2)
+  | ForallTyps (names, t) ->
+    ForallTyps (names, dec t)
+  | FunTyps (names, t) ->
+    FunTyps (names, dec t)
+  | _ -> typ
+
 let of_typ_expr
   (with_free_vars: bool)
   (typ_vars : Name.t Name.Map.t)
   (typ : Types.type_expr)
-  : (t * Name.t Name.Map.t * t Name.Map.t) Monad.t =
+  : (t * Name.t Name.Map.t * Kind.t Name.Map.t) Monad.t =
   of_typ_expr_in_constr None with_free_vars typ_vars typ
 
 let of_typs_exprs
   (with_free_vars: bool)
   (typ_vars : Name.t Name.Map.t)
   (typs : Types.type_expr list)
-  : (t list * Name.t Name.Map.t * t Name.Map.t) Monad.t =
+  : (t list * Name.t Name.Map.t * Kind.t Name.Map.t) Monad.t =
   of_typs_exprs_constr None with_free_vars typ_vars typs
 
 
@@ -565,6 +592,7 @@ module Subst = struct
     path_name : PathName.t -> PathName.t }
 end
 
+
 (** Pretty-print a type. Use the [context] parameter to know if we should add
     parenthesis. *)
 let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
@@ -689,3 +717,18 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
     end
   | Error message -> !^ message
 
+
+let typ_vars_to_coq
+    (delim : SmartPrint.t -> SmartPrint.t)
+    (sep_before : SmartPrint.t)
+    (sep_after : SmartPrint.t)
+    (typ_vars : Kind.t Name.Map.t) : SmartPrint.t =
+  let typ_vars = group_by_kind typ_vars in
+  if List.length typ_vars = 0
+  then empty
+  else sep_before ^^
+       (separate space
+          (typ_vars |> List.map (fun (typ, vars) ->
+               delim ((separate space (vars |> List.rev |> List.map Name.to_coq))
+                      ^^ !^ ":" ^^ (Kind.to_coq typ)))
+       )) ^-^ sep_after

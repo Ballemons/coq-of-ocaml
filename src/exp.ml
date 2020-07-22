@@ -6,7 +6,7 @@ open Monad.Notations
 module Header = struct
   type t = {
     name : Name.t;
-    typ_vars : (Name.t * Type.t) list;
+    typ_vars : Kind.t Name.Map.t;
     args : (Name.t * Type.t) list;
     structs : string list;
     typ : Type.t option }
@@ -572,7 +572,7 @@ and import_let_fun
         | _ :: _ -> struct_attributes in
       let header = {
         Header.name;
-        typ_vars = new_typ_vars |> Name.Map.bindings;
+        typ_vars = new_typ_vars;
         args = List.combine args_names args_typs;
         structs;
         typ = Some e_body_typ
@@ -1186,11 +1186,17 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         ) else
           !^ "with") ^^
         Name.to_coq header.Header.name ^^
-        (if header.Header.typ_vars = []
-        then empty
-        else braces @@ group (
-          separate space (List.map (fun n -> Name.to_coq @@ fst n) header.Header.typ_vars) ^^
-          !^ ":" ^^ Pp.set)) ^^
+        Type.typ_vars_to_coq braces empty empty header.Header.typ_vars
+        (* (if header.Header.typ_vars = Name.Map.empty *)
+        (* then empty *)
+        (* else *)
+          (* braces @@ group ( *)
+            (* let typ_vars = Type.group_by_type header.Header.typ_vars |> Type.Map.bindings in *)
+          (* separate space (List.map (fun n -> Name.to_coq @@ fst n) header.Header.typ_vars) ^^ *)
+          (* !^ ":" ^^ Pp.set)) *)
+
+        ^^
+
         group (separate space (header.Header.args |> List.map (fun (x, x_typ) ->
           parens (nest (
             Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None x_typ
