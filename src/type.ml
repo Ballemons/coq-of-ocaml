@@ -73,16 +73,16 @@ type tags = {
  ** This ensures a safe hatch to represent any type as a tag *)
 let find_tag
     (typ : t)
+    (args : t list)
     (m : tag_constructor Map.t)
-  : Name.t =
+  : t =
   match Map.find_opt typ m with
-  | None -> Map.find (Variable (Name.of_string_raw "a")) m |> fst
-  | Some (name, _) -> name
-
-(* let name_of_tags *)
-    (* (type_constr : Name.t) *)
-  (* : Name.t = *)
-  (* Name.suffix_by_tags type_constr *)
+  | None ->
+    let tag_name = Map.find (Variable (Name.of_string_raw "a")) m |> fst |> MixedPath.of_name in
+    Apply (tag_name, [typ])
+  | Some (tag_name, _) ->
+    let tag_name = MixedPath.of_name tag_name in
+    Apply (tag_name, args)
 
 let get_args_of
     (path : Path.t)
@@ -110,7 +110,6 @@ let tag_constructor_of
     | Kind k -> Kind.to_string k in
   let typ_name = Name.of_string_raw @@ typ_name in
   Name.suffix_by_tag @@ Name.snake_concat name typ_name
-
 
 (* TODO: Rethink specializatin of tag types *)
 let typ_union (name : Name.t) typ1 typ2 : Kind.t option =
@@ -145,7 +144,6 @@ let tags_of_typs
   { name;
     constructors }
 
-
 let rec tag_typ_constr_aux
     (tag_constrs : tag_constructor Map.t)
     (typ : t)
@@ -155,8 +153,8 @@ let rec tag_typ_constr_aux
   | Arrow (t1, t2) ->
     let* t1 = tag_ty t1 in
     let* t2 = tag_ty t2 in
-    let tag = find_tag typ tag_constrs |> MixedPath.of_name in
-    return @@ Apply (tag, [t1; t2])
+    let typ = find_tag typ [t1; t2] tag_constrs in
+    return typ
   | Tuple ts ->
     let* t = try return (List.hd ts)
       with Failure _ -> raise typ Error.Category.Unexpected "Malformed tuple of size < 1"
@@ -168,11 +166,11 @@ let rec tag_typ_constr_aux
       let* t = tag_ty t in
       let ts = Tuple (List.tl ts) in
       let* ts = tag_ty ts in
-      let tag = find_tag typ tag_constrs |> MixedPath.of_name in
-      return @@ Apply (tag, [t; ts])
+      let typ = find_tag typ [t; ts] tag_constrs in
+      return typ
   | Apply (mpath, ts) ->
-    let tag = find_tag typ tag_constrs |> MixedPath.of_name in
-    return @@ Apply (tag, ts)
+    let typ = find_tag typ ts tag_constrs in
+    return typ
   | _ -> return typ
 
 let type_exprs_of_row_field (row_field : Types.row_field)
@@ -235,7 +233,7 @@ let rec of_typ_expr_in_constr
     let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr (Some path) with_free_vars typ_vars typs in
     let* typs = typs |> Monad.List.map (tag_typ_constr path) in
     MixedPath.of_path false path None >>= fun mixed_path ->
-    return (Apply (mixed_path, List.rev typs), typ_vars, new_typs_vars)
+    return (Apply (mixed_path, typs), typ_vars, new_typs_vars)
   | Tobject (_, object_descr) ->
     begin match !object_descr with
     | Some (path, _ :: typs) ->
@@ -726,7 +724,6 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
       )
     end
   | Error message -> !^ message
-
 
 let typ_vars_to_coq
     (delim : SmartPrint.t -> SmartPrint.t)

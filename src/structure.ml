@@ -82,7 +82,7 @@ let decode_tag
     (tag : Type.tags)
   : (Pattern.t * Type.t) list =
   let { Type.name ; constructors } = tag in
-  let decoder_name = Name.prefix_by_dec name |> MixedPath.of_name in
+  let decoder_name = name |> MixedPath.of_name |> MixedPath.dec_name in
   let constructors = Type.Map.bindings constructors in
   List.fold_left (fun acc constructor ->
       let (typ, (constructor_name, args)) = constructor in
@@ -120,7 +120,7 @@ let build_tags :
     let patterns = decode_tag tags |> List.map (fun (lhs, rhs) -> (lhs,
                    None, Exp.Type rhs)) in
     let header : Exp.Header.t = {
-      name = Name.prefix_by_dec name;
+      name = name |> Name.prefix_by_dec |> Name.suffix_by_tags;
       typ_vars = Name.Map.empty;
       args = [(tag_var, Type.Variable (Name.suffix_by_tags name))];
       structs = [];
