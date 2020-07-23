@@ -187,6 +187,14 @@ let filter_typ_params_in_valid_set
       | AdtParameters.AdtVariable.Parameter name -> Name.Set.mem name valid_set
       | _ -> false )
 
+let is_variant_declaration
+    (path : Path.t)
+  : Types.constructor_declaration list option Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_kind = Type_variant constructors; _ } -> return @@ Some constructors
+  | _ -> return None
+
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr_in_constr
   (constr : Path.t option)
@@ -230,10 +238,16 @@ let rec of_typ_expr_in_constr
     of_typs_exprs_constr constr with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
     return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, _) ->
-    let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr (Some path) with_free_vars typ_vars typs in
-    let* typs = typs |> Monad.List.map (tag_typ_constr path) in
-    MixedPath.of_path false path None >>= fun mixed_path ->
+    let* mixed_path = MixedPath.of_path false path None in
+    (* Make sure it is not a type synonym before taging *)
+    let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
+    let constr = if is_variant then Some path else None in
+    let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr constr with_free_vars typ_vars typs in
+    let* typs = if is_variant
+      then typs |> Monad.List.map (tag_typ_constr path)
+      else return typs in
     return (Apply (mixed_path, typs), typ_vars, new_typs_vars)
+
   | Tobject (_, object_descr) ->
     begin match !object_descr with
     | Some (path, _ :: typs) ->
