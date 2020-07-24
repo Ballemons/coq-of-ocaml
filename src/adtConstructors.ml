@@ -254,12 +254,11 @@ let type_arguments
 let from_tags (tags : Type.tags) : Name.t * Type.t list * t =
   let { Type.name; constructors } = tags in
   let constructors = Type.Map.bindings constructors in
-  let (typs, items) = constructors |> List.map (fun (typ, (constructor_name, arg_names)) ->
+  let (typs, items) = constructors |> List.map (fun (typ, (constructor_name, arg_names, synonym)) ->
       (typ,
        let vars_typ  = match typ with
          | Type.Variable _ -> Kind.Set
-         | Apply (mpath, _) ->
-           Kind.Tag mpath
+         | Apply (mpath, _) -> if synonym then Kind.Set else Kind.Tag mpath
          | _ -> Kind.Tag (MixedPath.of_name name) in
        let typ_vars = List.fold_left (fun acc arg_name ->
            Name.Map.add arg_name vars_typ acc)

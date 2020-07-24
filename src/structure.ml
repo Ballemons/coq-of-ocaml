@@ -85,7 +85,7 @@ let decode_tag
   let decoder_name = name |> MixedPath.of_name |> MixedPath.dec_name in
   let constructors = Type.Map.bindings constructors in
   List.fold_left (fun acc constructor ->
-      let (typ, (constructor_name, args)) = constructor in
+      let (typ, (constructor_name, args, _)) = constructor in
       let build_constr_app = fun xs -> Pattern.Constructor (PathName.of_name [] constructor_name, xs) in
       let build_dec_app = fun x -> Type.Apply (decoder_name, [x]) in
       let pat = if List.length args = 0
