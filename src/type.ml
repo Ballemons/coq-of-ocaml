@@ -101,16 +101,16 @@ let tag_constructor_of
     (name : Name.t)
     (typ : t) =
   let typ_name = match typ with
-    | Variable _ -> "Var"
-    | Arrow _ -> "Arrow"
-    | Sum _ -> "Sum"
-    | Tuple _ -> "Tuple"
+    | Variable _ -> "var"
+    | Arrow _ -> "arrow"
+    | Sum _ -> "sum"
+    | Tuple _ -> "tuple"
     | Apply (mpath, _) -> MixedPath.to_string mpath
-    | Package _ -> "Package"
-    | ForallModule _ -> "ForallModule"
-    | ForallTyps _ -> "ForallTyps"
-    | FunTyps _ -> "FunTyps"
-    | Error s -> "Error" ^ s
+    | Package _ -> "package"
+    | ForallModule _ -> "forallModule"
+    | ForallTyps _ -> "forallTyps"
+    | FunTyps _ -> "funTyps"
+    | Error s -> "error" ^ s
     | Kind k -> Kind.to_string k in
   let typ_name = Name.of_string_raw @@ typ_name in
   Name.suffix_by_tag @@ Name.snake_concat name typ_name
@@ -200,7 +200,7 @@ let is_variant_declaration
   let* env = get_env in
   match Env.find_type path env with
   | { type_kind = Type_variant constructors; _ } -> return @@ Some constructors
-  | _ -> return None
+  | _ | exception _ -> return None
 
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr_in_constr

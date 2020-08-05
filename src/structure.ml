@@ -27,13 +27,7 @@ module Value = struct
           let { Exp.Header.name; typ_vars; args; typ; _ } = header in
           Name.to_coq name ^^
           Type.typ_vars_to_coq braces empty empty typ_vars
-          (* begin match typ_vars with *)
-          (* | [] -> empty *)
-          (* | _ :: _ ->  *)
-          (* braces @@ group (separate space (List.map (fun typ -> Name.to_coq @@ fst typ) typ_vars) ^^ *)
-          (* !^ ":" ^^ Type.to_coq Pp.set) *)
-          (* end *)
-               ^^
+          ^^
           group (separate space (args |> List.map (fun (x, t) ->
             parens @@ nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None t)
           ))) ^^
@@ -78,63 +72,6 @@ let top_level_evaluation_error : t list Monad.t =
     SideEffect
     "Top-level evaluations are ignored"
 
-let decode_tag
-    (tag : Type.tags)
-  : (Pattern.t * Type.t) list =
-  let { Type.name ; constructors } = tag in
-  let decoder_name = name |> MixedPath.of_name |> MixedPath.dec_name in
-  let constructors = Type.Map.bindings constructors in
-  List.fold_left (fun acc constructor ->
-      let (typ, (constructor_name, args, _)) = constructor in
-      let build_constr_app = fun xs -> Pattern.Constructor (PathName.of_name [] constructor_name, xs) in
-      let build_dec_app = fun x -> Type.Apply (decoder_name, [x]) in
-      let pat = if List.length args = 0
-      then Some (Pattern.Variable constructor_name, typ)
-      else begin match typ with
-        | Type.Variable _ | Type.Kind Kind.Tag _ ->
-          let var = List.hd args in
-          Some (build_constr_app [Pattern.Variable var], Variable var)
-        | Type.Kind Kind.Set -> Some (build_constr_app [], Kind Kind.Set)
-        | Arrow (typ1,typ2) ->
-          let v1 = List.nth args 0 in
-          let v2 = List.nth args 1 in
-          Some (build_constr_app [Pattern.Variable v1; Pattern.Variable v2],
-                Arrow (Type.Variable v1 |> build_dec_app , Type.Variable v2 |> build_dec_app))
-        | Tuple typs ->
-          Some (build_constr_app (args |> List.map (fun v -> Pattern.Variable v)),
-                Tuple (args |> List.map (fun v -> Type.Variable v |> build_dec_app)))
-        | Apply (p, typs) ->
-          Some (build_constr_app (args |> List.map (fun v -> Pattern.Variable v)),
-                Apply (p, args |> List.map (fun v -> Type.Variable v)))
-        | _ -> None
-      end
-      in pat :: acc
-    ) [] constructors |> List.filter_map (fun x -> x)
-
-let build_tags :
-    TypeDefinition.t
-    -> (Value.t * TypeDefinition.t) option = function
-  | TypeDefinition.Inductive (Some tags, _) ->
-    let name = tags.Type.name in
-    let tag_var = Name.of_string_raw "tag" in
-    let patterns = decode_tag tags |> List.map (fun (lhs, rhs) -> (lhs,
-                   None, Exp.Type rhs)) in
-    let header : Exp.Header.t = {
-      name = name |> Name.prefix_by_dec |> Name.suffix_by_tags;
-      typ_vars = Name.Map.empty;
-      args = [(tag_var, Type.Variable (Name.suffix_by_tags name))];
-      structs = [];
-      typ = Some (Type.Kind Kind.Set);
-    } in
-    let e = Exp.Match (Exp.Variable ((MixedPath.of_name tag_var), []), patterns, false) in
-    let def : Exp.t option Exp.Definition.t = {
-      is_rec = Recursivity.New true;
-      cases = [(header, Some e)] } in
-    let tags = TypeDefinition.Inductive.of_tags tags in
-    Some (def, TypeDefinition.Inductive (None, tags))
-  | _ -> None
-
-
 (** Import an OCaml structure. *)
 let rec of_structure (structure : structure) : t list Monad.t =
   let of_structure_item (item : structure_item) (final_env : Env.t)
@@ -167,10 +104,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
          phantom types. *)
       set_env final_env (
       TypeDefinition.of_ocaml typs >>= fun def ->
-      let tags = match build_tags def with
-        | None -> []
-        | Some (decoder, tags) -> [TypeDefinition tags; Value decoder] in
-      return (tags @ [TypeDefinition def]))
+      return ([TypeDefinition def]))
     | Tstr_exception { tyexn_constructor = { ext_id; _ }; _ } ->
       error_message (Error ("exception " ^ Ident.name ext_id)) SideEffect (
         "The definition of exceptions is not handled.\n\n" ^

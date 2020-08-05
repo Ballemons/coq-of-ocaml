@@ -25,10 +25,6 @@ module Inductive = struct
       Name.to_coq name
     ))
 
-  let of_tags (tags : Type.tags) : t =
-    let (name, _, constructors) = AdtConstructors.from_tags tags in
-    {constructor_records = []; notations = []; records = []; typs = [(name, [], constructors)]}
-
   let to_coq_constructor_records (inductive : t) : SmartPrint.t option =
     match inductive.constructor_records with
     | [] -> None
@@ -205,7 +201,7 @@ module Inductive = struct
 end
 
 type t =
-  | Inductive of (Type.tags option * Inductive.t)
+  | Inductive of Inductive.t
   | Record of Name.t * Name.t list * (Name.t * Type.t) list * bool
   | Synonym of Name.t * Name.t list * Type.t
   | Abstract of Name.t * Name.t list
@@ -232,7 +228,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
         row_fields >>= fun single_constructors ->
       AdtConstructors.of_ocaml single_constructors >>= fun constructors ->
       raise
-        (Inductive (None ,{
+        (Inductive ({
           constructor_records = [];
           notations = [];
           records = [];
@@ -365,26 +361,22 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
           ExtensibleType
           "We do not handle extensible types"
       )
-    ) ([], [], [], [])) >>= fun (constructor_records, notations, records, typs') ->
+    ) ([], [], [], [])) >>= fun (constructor_records, notations, records, typs) ->
 
-    let {typ_id; _ } = List.hd typs in
-    let* tags = Type.get_tags_of (Path.Pident typ_id) in
-    let typs' = typs' |> List.map (fun (name, typ_args, constructors) ->
+    let typs = typs |> List.map (fun (name, typ_args, constructors) ->
         (name, AdtParameters.get_parameters typ_args, constructors)) in
 
     return (Inductive (
-        Some tags,
         { constructor_records = List.rev constructor_records;
           notations = List.rev notations;
           records;
-          typs = List.rev typs'
+          typs = List.rev typs
         }
       ))
 
 let to_coq_typs
     (subst : Type.Subst.t)
     (is_first : bool)
-    (is_tag : bool)
     (name : Name.t)
     (params : Name.t list)
     (constructors : AdtConstructors.t)
@@ -405,11 +397,10 @@ let to_coq_typs
     let constructor = List.hd constructors in
     let arity = List.length constructor.res_typ_params + 1 in
     (* TODO: Can we fix universe inconsistencies if we change type_of_adts to Set? *)
-    let type_of_adts = "Type" in
-    let inductive_typ = if is_tag then "Type" else type_of_adts in
+    let inductive_typ = Pp.set in
     let l = List.init arity (fun i ->
         if i = arity - 1
-        then !^ inductive_typ
+        then inductive_typ
         else !^ (Name.to_string (Name.suffix_by_tags name))) in
     separate (!^ " -> ") l
     ^^ !^ ":=" ^-^
@@ -422,7 +413,7 @@ let to_coq_typs
         } ->
           newline ^^ nest (
             !^ "|" ^^ Name.to_coq constructor_name ^^ !^ ":" ^^
-            Type.typ_vars_to_coq (if is_tag then parens else braces) (!^ "forall") (!^ ",") typ_vars ^^
+            Type.typ_vars_to_coq braces (!^ "forall") (!^ ",") typ_vars ^^
               group @@ separate space (param_typs |> List.map (fun param_typ ->
                 group (Type.to_coq (Some subst) (Some Type.Context.Arrow) param_typ ^^ !^ "->")
               )) ^^
@@ -435,7 +426,6 @@ let to_coq_typs
 
 let to_coq_inductive
     (subst : Type.Subst.t)
-    (is_tag : bool)
     (inductive : Inductive.t)
   : SmartPrint.t =
   let constructor_records = Inductive.to_coq_constructor_records inductive in
@@ -461,7 +451,7 @@ let to_coq_inductive
     separate (newline ^^ newline) (inductive.typs |>
                                    List.mapi (fun index (name, params, constructors) ->
                                        let is_first = index = 0 in
-                                       to_coq_typs subst is_first is_tag name params constructors
+                                       to_coq_typs subst is_first name params constructors
                                      )
                                   ) ^-^
     (match notations_wheres with
@@ -484,7 +474,7 @@ let to_coq_inductive
 
 let to_coq (def : t) : SmartPrint.t =
   match def with
-  | Inductive (tags, inductive) ->
+  | Inductive inductive ->
     let subst = {
       Type.Subst.name = (fun name -> name);
       path_name = fun path_name ->
@@ -513,7 +503,7 @@ let to_coq (def : t) : SmartPrint.t =
         | _ -> path_name
     } in
     (* We recognize if an inductive is a tag if no tag was provided for it *)
-    to_coq_inductive subst (Option.is_none tags) inductive
+    to_coq_inductive subst inductive
   | Record (name, typ_args, fields, with_with) ->
     AdtConstructors.RecordSkeleton.to_coq_record name name typ_args fields with_with
   | Synonym (name, typ_args, value) ->
