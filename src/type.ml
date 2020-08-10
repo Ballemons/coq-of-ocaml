@@ -13,6 +13,7 @@ type t =
   | Package of bool * PathName.t * arity_or_typ Tree.t
   | ForallModule of Name.t * t * t
   | ForallTyps of Name.t list * t
+  | String of string
   | FunTyps of Name.t list * t
   | Error of string
 and arity_or_typ =
@@ -32,6 +33,7 @@ let get_order (typ : t) : int =
   | ForallTyps _ -> 8
   | FunTyps _ -> 9
   | Error _ -> 10
+  | String _ -> 11
 
 let compare t1 t2 : int =
   let x = get_order t2 - get_order t1 in
@@ -64,29 +66,29 @@ let group_by_kind
 (** A tag constructor have a name, arguments and the type of the arguments
  ** if bool is true then arguments are tags, otherwise they are Sets
 *)
-type tag_constructor = (Name.t * Name.t list * bool)
+(* type tag_constructor = (Name.t * Name.t list * bool) *)
 
 (** tags represents the encoding of a type as datatype constructors
  ** Each GADT will generate its own tags for the types associated on its indexes *)
-type tags = {
-  name : Name.t;
-  constructors : tag_constructor Map.t }
+(* type tags = { *)
+  (* name : Name.t; *)
+  (* constructors : tag_constructor Map.t } *)
 
 (** find_tag returns the Var tag if the type is not mapped,
  ** This ensures a safe hatch to represent any type as a tag *)
-let find_tag
-    (typ : t)
-    (args : t list)
-    (m : tag_constructor Map.t)
-  : t =
-  match Map.find_opt typ m with
-  | None ->
-    let (tag_name,_, _) = Map.find (Variable (Name.of_string_raw "a")) m in
-    let tag_name = MixedPath.of_name tag_name in
-    Apply (tag_name, [typ])
-  | Some (tag_name,_, _) ->
-    let tag_name = MixedPath.of_name tag_name in
-    Apply (tag_name, args)
+
+(* let find_tag
+ *     (typ : t)
+ *     (args : t list)
+ *   : t =
+ *   match Map.find_opt typ m with
+ *   | None ->
+ *     let (tag_name,_, _) = Map.find (Variable (Name.of_string_raw "a")) m in
+ *     let tag_name = MixedPath.of_name tag_name in
+ *     Apply (tag_name, [typ])
+ *   | Some (tag_name,_, _) ->
+ *     let tag_name = MixedPath.of_name tag_name in
+ *     Apply (tag_name, args) *)
 
 let get_args_of
     (path : Path.t)
@@ -98,22 +100,23 @@ let get_args_of
   | _ -> []
 
 let tag_constructor_of
-    (name : Name.t)
+    (* (name : Name.t) *)
     (typ : t) =
-  let typ_name = match typ with
-    | Variable _ -> "var"
-    | Arrow _ -> "arrow"
-    | Sum _ -> "sum"
-    | Tuple _ -> "tuple"
-    | Apply (mpath, _) -> MixedPath.to_string mpath
-    | Package _ -> "package"
-    | ForallModule _ -> "forallModule"
-    | ForallTyps _ -> "forallTyps"
-    | FunTyps _ -> "funTyps"
-    | Error s -> "error" ^ s
-    | Kind k -> Kind.to_string k in
-  let typ_name = Name.of_string_raw @@ typ_name in
-  Name.suffix_by_tag @@ Name.snake_concat name typ_name
+  match typ with
+  | Variable a -> "var " ^ (Name.to_string a)
+  | Arrow _ -> "arrow"
+  | Sum _ -> "sum"
+  | Tuple _ -> "tuple"
+  | Apply (mpath, _) -> MixedPath.to_string mpath
+  | Package _ -> "package"
+  | ForallModule _ -> "forallModule"
+  | ForallTyps _ -> "forallTyps"
+  | FunTyps _ -> "funTyps"
+  | Error s -> "error" ^ s
+  | Kind k -> Kind.to_string k
+  | String s -> "string"
+(* let typ_name = Name.of_string_raw @@ typ_name in *)
+  (* Name.suffix_by_tag @@ Name.snake_concat name typ_name *)
 
 (* TODO: Rethink specializatin of tag types *)
 let typ_union (name : Name.t) typ1 typ2 : Kind.t option =
@@ -123,61 +126,56 @@ let typ_union (name : Name.t) typ1 typ2 : Kind.t option =
   | t, _ -> Some t
 
 let arg_num : t -> int = function
-  | Kind Kind.Set -> 0
+  | Kind _ -> 0
   | Apply (p, typs) -> List.length typs
-  | Variable _ | Kind Kind.Tag _ -> 1
+  | Variable _  -> 1
   | ForallTyps (names, typ) -> 1
   | FunTyps (names, typ) -> 1
   | _ -> 2
 
-let tags_of_typs
-    (path : Path.t)
-    (typs : t list)
-    (synonyms: bool list)
-  : tags =
-  (* We always add a variable to avoid the need of induction-recursion *)
-  let name = Name.of_string_raw @@ Path.last path in
-  let typs = Variable (Name.of_string_raw "a") :: typs in
-  let synonyms = false :: synonyms in
-  let constructors = List.fold_left2 (fun mapping typ synonym ->
-      let constructor_name = tag_constructor_of name typ in
-      if not @@ Map.mem typ mapping
-      then
-        let num_args = arg_num typ in
-        let typ_vars = List.init num_args (fun i -> Name.of_string_raw @@ "t" ^ string_of_int i) in
-        Map.add typ (constructor_name, typ_vars, synonym) mapping
-      else mapping
-    ) Map.empty typs synonyms in
-  { name;
-    constructors }
+(* let tags_of_typs
+ *     (path : Path.t)
+ *     (typs : t list)
+ *     (synonyms: bool list)
+ *   : tags =
+ *   (\* We always add a variable to avoid the need of induction-recursion *\)
+ *   let name = Name.of_string_raw @@ Path.last path in
+ *   let typs = Variable (Name.of_string_raw "a") :: typs in
+ *   let synonyms = false :: synonyms in
+ *   let constructors = List.fold_left2 (fun mapping typ synonym ->
+ *       let constructor_name = tag_constructor_of name typ in
+ *       if not @@ Map.mem typ mapping
+ *       then
+ *         let num_args = arg_num typ in
+ *         let typ_vars = List.init num_args (fun i -> Name.of_string_raw @@ "t" ^ string_of_int i) in
+ *         Map.add typ (constructor_name, typ_vars, synonym) mapping
+ *       else mapping
+ *     ) Map.empty typs synonyms in
+ *   { name;
+ *     constructors } *)
 
 let rec tag_typ_constr_aux
-    (tag_constrs : tag_constructor Map.t)
     (typ : t)
   : t Monad.t =
-  let tag_ty = tag_typ_constr_aux tag_constrs in
+  let tag_ty = tag_typ_constr_aux in
   match typ with
   | Arrow (t1, t2) ->
     let* t1 = tag_ty t1 in
     let* t2 = tag_ty t2 in
-    let typ = find_tag typ [t1; t2] tag_constrs in
-    return typ
+    let tag = "arrow_tag" |> Name.of_string_raw |> MixedPath.of_name  in
+    return (Apply (tag, [t1; t2]))
   | Tuple ts ->
-    let* t = try return (List.hd ts)
-      with Failure _ -> raise typ Error.Category.Unexpected "Malformed tuple of size < 1"
-    in
-    if List.length ts = 1
-    then
-      tag_ty t
-    else
-      let* t = tag_ty t in
-      let ts = Tuple (List.tl ts) in
-      let* ts = tag_ty ts in
-      let typ = find_tag typ [t; ts] tag_constrs in
-      return typ
+    let* ts = Monad.List.map tag_ty ts in
+    let tag = "tuple_tag" |> Name.of_string_raw |> MixedPath.of_name  in
+    return (Apply (tag, ts))
   | Apply (mpath, ts) ->
-    let typ = find_tag typ ts tag_constrs in
-    return typ
+    let* ts = Monad.List.map tag_ty ts in
+    let arg_names = List.map tag_constructor_of ts in
+    let tag = "constr_tag" |> Name.of_string_raw |> MixedPath.of_name  in
+    let str_repr = (MixedPath.to_string mpath) ^
+                   (List.fold_left (fun acc ty -> acc ^ "_" ^ ty) "" arg_names) in
+    return (Apply (tag, [String str_repr; typ]))
+    (* return typ *)
   | _ -> return typ
 
 let type_exprs_of_row_field (row_field : Types.row_field)
@@ -224,9 +222,7 @@ let rec of_typ_expr_in_constr
     let* generated_name = Name.of_string false generated_name in
     let* typ = match constr with
       | None -> return Kind.Set
-      | Some path ->
-        let* mpath = MixedPath.of_path false path None in
-        return (Kind.Tag mpath) in
+      | Some _ -> return (Kind.Tag) in
     let new_typ_vars = Name.Map.singleton generated_name typ in
     let (typ_vars, name) =
       if Name.Map.mem source_name typ_vars
@@ -340,35 +336,35 @@ let rec of_typ_expr_in_constr
         typ_substitutions in
       return (Package (true, path_name, typ_params), typ_vars, new_typ_vars)
 
-and get_tags_of
-    (path : Path.t)
-  : tags Monad.t =
-  let name = Name.of_string_raw @@ Path.last path in
-  let* constructors = is_variant_declaration path in
-  begin match constructors with
-    | Some constructors ->
-      let typs = constructors |> List.map (fun { Types.cd_res; _ } -> cd_res) |> List.filter_map (fun x -> x) in
-      let typs = List.map (get_args_of path) typs |> List.flatten in
-      let* typs_synonyms = typs |> Monad.List.map (fun typ ->
-          match typ.Types.desc with
-          | Tconstr (path, _, _) -> Monad.Option.is_none @@ is_variant_declaration path
-          | _ -> return false)
-          in
-      let* (typs, _, _) = of_typs_exprs_constr (Some path) true Name.Map.empty typs in
-      return @@ tags_of_typs path typs typs_synonyms
-    | _ -> raise { name = Name.suffix_by_tags name; constructors = Map.empty }
-                     Error.Category.Unexpected "Type declaration was not found during tagging"
-  end
+(* and get_tags_of
+ *     (path : Path.t)
+ *   : tags Monad.t =
+ *   let name = Name.of_string_raw @@ Path.last path in
+ *   let* constructors = is_variant_declaration path in
+ *   begin match constructors with
+ *     | Some constructors ->
+ *       let typs = constructors |> List.map (fun { Types.cd_res; _ } -> cd_res) |> List.filter_map (fun x -> x) in
+ *       let typs = List.map (get_args_of path) typs |> List.flatten in
+ *       let* typs_synonyms = typs |> Monad.List.map (fun typ ->
+ *           match typ.Types.desc with
+ *           | Tconstr (path, _, _) -> Monad.Option.is_none @@ is_variant_declaration path
+ *           | _ -> return false)
+ *           in
+ *       let* (typs, _, _) = of_typs_exprs_constr (Some path) true Name.Map.empty typs in
+ *       return @@ tags_of_typs path typs typs_synonyms
+ *     | _ -> raise { name = Name.suffix_by_tags name; constructors = Map.empty }
+ *                      Error.Category.Unexpected "Type declaration was not found during tagging"
+ *   end
+*)
 
-and tag_typ_constr
-    (path : Path.t)
-    (typ : t)
-  : t Monad.t =
-  let name = Path.last path in
-  if List.exists (function x -> name = x) ["int"; "list"; "option"; "bool"; "string"; "unit"]
-  then return typ
-  else let* { constructors; _ } = get_tags_of path in
-    tag_typ_constr_aux constructors typ
+ and tag_typ_constr
+     (path : Path.t)
+     (typ : t)
+   : t Monad.t =
+   let name = Path.last path in
+   if List.exists (function x -> name = x) ["int"; "list"; "option"; "bool"; "string"; "unit"]
+   then return typ
+   else tag_typ_constr_aux typ
 
 and of_typs_exprs_constr
   (path : Path.t option)
@@ -400,12 +396,11 @@ let rec decode_var_tags
       | None -> begin match Name.Map.find_opt name typ_vars with
           | None -> return typ
           | Some Kind.Set -> return typ
-          | Some (Kind.Tag mpath) ->
-            let decname = MixedPath.dec_name mpath in
+          | Some Kind.Tag ->
+            let decname = MixedPath.dec_name in
             return @@ Apply (decname, [typ])
         end
       | Some _ ->
-        (* TODO: Add coercions treatment *)
         return typ
     end
   | Arrow (t1, t2) ->
@@ -511,8 +506,9 @@ and existential_typs_of_typs (typs : Types.type_expr list)
 (** The free variables of a type. *)
 let rec typ_args_of_typ (typ : t) : Name.Set.t =
   match typ with
+  | String x -> Name.Set.empty
   | Variable x -> Name.Set.singleton x
-  | Kind Kind.Set | Kind Kind.Tag _ -> Name.Set.empty
+  | Kind _ -> Name.Set.empty
   | Arrow (typ1, typ2) -> typ_args_of_typs [typ1; typ2]
   | Sum typs -> typ_args_of_typs (List.map snd typs)
   | Tuple typs | Apply (_, typs) -> typ_args_of_typs typs
@@ -539,9 +535,10 @@ and typ_args_of_typs (typs : t list) : Name.Set.t =
     types. *)
 let rec local_typ_constructors_of_typ (typ : t) : Name.Set.t =
   match typ with
+  | String _ -> Name.Set.empty
   | Variable x -> Name.Set.singleton x
   | Arrow (typ1, typ2) -> local_typ_constructors_of_typs [typ1; typ2]
-  | Kind Kind.Set | Kind Kind.Tag _ -> Name.Set.empty
+  | Kind _ -> Name.Set.empty
   | Sum typs -> local_typ_constructors_of_typs (List.map snd typs)
   | Tuple typs -> local_typ_constructors_of_typs typs
   | Apply (mixed_path, typs) ->
@@ -625,12 +622,23 @@ module Subst = struct
     path_name : PathName.t -> PathName.t }
 end
 
+let tag_notation (typs : t list): Name.t option =
+  if List.length typs <> 2 then None
+  else let typ = List.nth typs 1 in
+    let name = tag_constructor_of typ in
+    print_string "\n";
+    print_string name;
+    print_string "\n";
+    if List.mem name ["int"; "string"; "bool"; "float"]
+    then Some (Name.of_string_raw (name ^ "_tag"))
+    else None
 
 (** Pretty-print a type. Use the [context] parameter to know if we should add
     parenthesis. *)
 let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
   : SmartPrint.t =
   match typ with
+  | String x -> !^ ("\"" ^ x ^ "\"")
   | Variable x  ->
     let x =
       match subst with
@@ -668,18 +676,23 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
         (List.map (to_coq subst (Some Context.Tuple)) typs)
     end
   | Apply (path, typs) ->
-    let path =
-      match subst with
-      | None -> path
-      | Some subst ->
-        begin match path with
-        | MixedPath.PathName path_name ->
-          MixedPath.PathName (subst.path_name path_name)
-        | _ -> path
-        end in
-    Pp.parens (Context.should_parens context Context.Apply && typs <> []) @@
-    nest @@ separate space
-      (MixedPath.to_coq path :: List.map (to_coq subst (Some Context.Apply)) typs)
+    (* Prints tags as notations *)
+    let tag = tag_notation typs in
+    if MixedPath.is_tag path && Option.is_some tag
+    then let tag = Option.get tag in
+      to_coq subst None (Variable tag)
+    else let path =
+           match subst with
+           | None -> path
+           | Some subst ->
+             begin match path with
+               | MixedPath.PathName path_name ->
+                 MixedPath.PathName (subst.path_name path_name)
+               | _ -> path
+             end in
+      Pp.parens (Context.should_parens context Context.Apply && typs <> []) @@
+      nest @@ separate space
+        (MixedPath.to_coq path :: List.map (to_coq subst (Some Context.Apply)) typs)
   | Package (is_in_exp, path_name, typ_params) ->
     let existential_typs =
       Tree.flatten typ_params |>
@@ -749,6 +762,7 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
       )
     end
   | Error message -> !^ message
+
 
 let typ_vars_to_coq
     (delim : SmartPrint.t -> SmartPrint.t)

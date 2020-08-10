@@ -13,9 +13,6 @@ let __make (path : string list) (base : string) : t =
     base = Name.Make base
   }
 
-let dec_name (p : t) : t =
-  { path = p.path; base = p.base |> Name.prefix_by_dec |> Name.suffix_by_tags}
-
 let try_to_use (head : string) (name : string) : bool option Monad.t =
   let* configuration = get_configuration in
   let require = Configuration.should_require configuration head in

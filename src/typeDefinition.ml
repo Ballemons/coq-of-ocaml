@@ -401,7 +401,7 @@ let to_coq_typs
     let l = List.init arity (fun i ->
         if i = arity - 1
         then inductive_typ
-        else !^ (Name.to_string (Name.suffix_by_tags name))) in
+        else !^ "vtag") in
     separate (!^ " -> ") l
     ^^ !^ ":=" ^-^
     separate empty (
