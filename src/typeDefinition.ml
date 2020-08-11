@@ -396,7 +396,6 @@ let to_coq_typs
     ) ^^ !^ ":" ^^
     let constructor = List.hd constructors in
     let arity = List.length constructor.res_typ_params + 1 in
-    (* TODO: Can we fix universe inconsistencies if we change type_of_adts to Set? *)
     let inductive_typ = Pp.set in
     let l = List.init arity (fun i ->
         if i = arity - 1
