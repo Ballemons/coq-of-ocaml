@@ -153,7 +153,6 @@ let rec of_typ_expr_in_constr
       then typs |> Monad.List.map (tag_typ_constr path)
       else return typs in
     return (Apply (mixed_path, typs), typ_vars, new_typs_vars)
-
   | Tobject (_, object_descr) ->
     begin match !object_descr with
     | Some (path, _ :: typs) ->
@@ -508,9 +507,6 @@ let tag_notation (typs : t list): Name.t option =
   if List.length typs <> 2 then None
   else let typ = List.nth typs 1 in
     let name = tag_constructor_of typ in
-    print_string "\n";
-    print_string name;
-    print_string "\n";
     if List.mem name ["int"; "string"; "bool"; "float"]
     then Some (Name.of_string_raw (name ^ "_tag"))
     else None
