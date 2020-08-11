@@ -69,9 +69,15 @@ let rec tag_typ_constr_aux
     let tag = "arrow_tag" |> Name.of_string_raw |> MixedPath.of_name  in
     return (Apply (tag, [t1; t2]))
   | Tuple ts ->
-    let* ts = Monad.List.map tag_ty ts in
     let tag = "tuple_tag" |> Name.of_string_raw |> MixedPath.of_name  in
-    return (Apply (tag, ts))
+    if List.length ts = 2
+    then
+      let* ts = Monad.List.map tag_ty ts in
+      return (Apply (tag, ts))
+    else
+      let* t = tag_ty (List.hd ts) in
+      let* ts = tag_ty @@ Tuple (List.tl ts) in
+      return (Apply (tag, [t; ts]))
   | Apply (mpath, ts) ->
     let* ts = Monad.List.map tag_ty ts in
     let arg_names = List.map tag_constructor_of ts in

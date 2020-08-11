@@ -189,7 +189,11 @@ module Single = struct
             | Type.Apply (_, typs) -> return (typs, new_typ_vars)
             | _ -> raise ([ty], new_typ_vars) Error.Category.Unexpected "Unexpected Type of record"
           end
-        | None -> return (List.map (fun v -> Type.Variable v) defined_typ_params, Name.Map.empty)
+        | None ->
+          let new_typ_vars = List.fold_left (fun map typ_param ->
+              Name.Map.add typ_param Kind.Tag map
+            ) Name.Map.empty defined_typ_params in
+          return (List.map (fun v -> Type.Variable v) defined_typ_params, new_typ_vars)
       in
       let typ_vars = Name.Map.union Type.typ_union typ_vars new_typ_vars in
       let typ_name = MixedPath.of_name typ_name in
