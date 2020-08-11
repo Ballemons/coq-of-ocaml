@@ -101,6 +101,7 @@ let filter_typ_params_in_valid_set
       | AdtParameters.AdtVariable.Parameter name -> Name.Set.mem name valid_set
       | _ -> false )
 
+
 let is_variant_declaration
     (path : Path.t)
   : Types.constructor_declaration list option Monad.t =
@@ -108,6 +109,14 @@ let is_variant_declaration
   match Env.find_type path env with
   | { type_kind = Type_variant constructors; _ } -> return @@ Some constructors
   | _ | exception _ -> return None
+
+let is_type_variant (t : Types.type_expr) : bool Monad.t =
+  match t.desc with
+  | Tconstr (path, _, _) ->
+    let* is_variant = is_variant_declaration path in
+    return @@ Option.is_some is_variant
+  | _ -> return false
+
 
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr_in_constr
