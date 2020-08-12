@@ -7,6 +7,7 @@ type t =
   | Variable of Name.t
   | Kind of Kind.t
   | Arrow of t * t
+  | Eq of t * t
   | Sum of (string * t) list
   | Tuple of t list
   | Apply of MixedPath.t * t list
@@ -40,6 +41,7 @@ let tag_constructor_of
   match typ with
   | Variable a -> "var " ^ (Name.to_string a)
   | Arrow _ -> "arrow"
+  | Eq _ -> "eq"
   | Sum _ -> "sum"
   | Tuple _ -> "tuple"
   | Apply (mpath, _) -> MixedPath.to_string mpath
@@ -116,6 +118,19 @@ let is_type_variant (t : Types.type_expr) : bool Monad.t =
     let* is_variant = is_variant_declaration path in
     return @@ Option.is_some is_variant
   | _ -> return false
+
+(** This function is utilized for building dependent pattern matching,
+    if typ is a type constructor then it will return a list of equations
+    relating each index of the type constructor to its real instantiation *)
+let normalize_constructor (typ : t) : t * t list =
+  match typ with
+  | Apply (t, args) ->
+    let (args, eqs) = args |> List.mapi (fun i typ ->
+        let x = "t" ^ string_of_int i |> Name.of_string_raw in
+        (Variable x, Eq (Variable x, typ))
+      ) |> List.split in
+    (Apply (t, args), eqs)
+  | _ -> (typ, [])
 
 
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
@@ -406,6 +421,7 @@ let rec typ_args_of_typ (typ : t) : Name.Set.t =
   | Variable x -> Name.Set.singleton x
   | Kind _ -> Name.Set.empty
   | Arrow (typ1, typ2) -> typ_args_of_typs [typ1; typ2]
+  | Eq (typ1, typ2) -> typ_args_of_typs [typ1;typ2]
   | Sum typs -> typ_args_of_typs (List.map snd typs)
   | Tuple typs | Apply (_, typs) -> typ_args_of_typs typs
   | Package (_, _, typ_params) ->
@@ -434,6 +450,7 @@ let rec local_typ_constructors_of_typ (typ : t) : Name.Set.t =
   | String _ -> Name.Set.empty
   | Variable x -> Name.Set.singleton x
   | Arrow (typ1, typ2) -> local_typ_constructors_of_typs [typ1; typ2]
+  | Eq (typ1, typ2) -> local_typ_constructors_of_typs [typ1; typ2]
   | Kind _ -> Name.Set.empty
   | Sum typs -> local_typ_constructors_of_typs (List.map snd typs)
   | Tuple typs -> local_typ_constructors_of_typs typs
@@ -480,6 +497,7 @@ module Context = struct
     | Sum
     | Tuple
     | Forall
+    | Eq
 
   let get_order (context : t) : int =
     match context with
@@ -488,6 +506,7 @@ module Context = struct
     | Sum -> 2
     | Tuple -> 1
     | Forall -> 4
+    | Eq -> 5
 
   let should_parens (context : t option) (current_context : t) : bool =
     match context with
@@ -539,6 +558,11 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
       | Some subst -> subst.name x in
     Name.to_coq x
   | Kind k -> Kind.to_coq k
+  | Eq (lhs, rhs) ->
+    Context.parens context Context.Eq @@ group (
+        (to_coq subst (Some Context.Eq) lhs ^^ !^ "="
+      )) ^^
+      to_coq subst (Some Context.Eq) rhs
   | Arrow _ ->
     let (typ_xs, typ_y) = accumulate_nested_arrows typ in
     Context.parens context Context.Arrow @@ group (
