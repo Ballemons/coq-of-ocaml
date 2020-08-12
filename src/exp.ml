@@ -49,6 +49,7 @@ type t =
     (** A constructor name, some implicits, and a list of arguments. *)
   | Apply of t * t list (** An application. *)
   | Function of Name.t * t (** An argument name and a body. *)
+  | Functions of Name.t list * t (** An argument name and a body. *)
   | LetVar of string option * Name.t * Name.t list * t * t
     (** The let of a variable, with optionally a list of polymorphic variables.
         We optionally specify the symbol of the let operator as it may be
@@ -137,6 +138,14 @@ module ModuleTypValues = struct
       )
     | _ -> return []
 end
+
+let capture_motive (e : t) (dep_match : dependent_pattern_match option) =
+  match dep_match with
+  | None -> e
+  | Some { args; _ } ->
+    let args = args |> List.mapi (fun i _ ->
+        ("eq" ^ string_of_int i) |> Name.of_string_raw) in
+    Functions(args, e)
 
 let rec any_patterns_with_ith_true (is_guarded : bool) (i : int) (n : int)
   : Pattern.t list =
@@ -485,6 +494,7 @@ and of_match
     | Texp_unreachable -> return None
     | _ ->
       of_expression typ_vars c_rhs >>= fun e ->
+      let e = capture_motive e dep_match in
       return (
         Util.Option.map pattern (fun pattern ->
         (pattern, existential_cast, guard, e))
@@ -1157,6 +1167,8 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
     end
   | Function (x, e) ->
     Pp.parens paren @@ nest (!^ "fun" ^^ Name.to_coq x ^^ !^ "=>" ^^ to_coq false e)
+  | Functions (xs, e) ->
+    Pp.parens paren @@ nest (!^ "fun" ^^ separate space (List.map Name.to_coq xs) ^^ !^ "=>" ^^ to_coq false e)
   | LetVar (let_symbol, x, typ_params, e1, e2) ->
     let get_default () =
       Pp.parens paren @@ nest (
