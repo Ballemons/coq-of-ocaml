@@ -84,7 +84,8 @@ let rec tag_typ_constr_aux
     let* ts = Monad.List.map tag_ty ts in
     let arg_names = List.map tag_constructor_of ts in
     let tag = "constr_tag" |> Name.of_string_raw |> MixedPath.of_name  in
-    let str_repr = (MixedPath.to_string mpath) ^
+    let name = (MixedPath.to_string mpath) in
+    let str_repr = name ^
                    (List.fold_left (fun acc ty -> acc ^ "_" ^ ty) "" arg_names) in
     return (Apply (tag, [String str_repr; typ]))
   | _ -> return typ
@@ -112,6 +113,22 @@ let is_variant_declaration
   | { type_kind = Type_variant constructors; _ } -> return @@ Some constructors
   | _ | exception _ -> return None
 
+let is_type_abstract
+    (path : Path.t)
+  : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_kind = Type_abstract; _ } -> return @@ true
+  | _ | exception _ -> return false
+
+let is_new_type
+    (path : Path.t)
+  : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_is_newtype = true; _ } -> return @@ true
+  | _ | exception _ -> return false
+
 let is_type_variant (t : Types.type_expr) : bool Monad.t =
   match t.desc with
   | Tconstr (path, _, _) ->
@@ -133,6 +150,19 @@ let normalize_constructor (typ : t) : t * t list =
   | _ -> (typ, [])
 
 
+let is_native_type (path : Path.t) : bool =
+   let name = Path.last path in
+   List.exists (function x -> name = x) ["int"; "bool"; "string"; "unit"]
+
+let is_native_datatype (path : Path.t) : bool =
+   let name = Path.last path in
+   List.exists (function x -> name = x) ["list"; "option"; "map"]
+
+let is_path_gadt (path : Path.t) : bool Monad.t =
+  let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
+  let is_native = is_native_datatype path in
+  return (is_variant && not is_native)
+
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr_in_constr
   (constr : Path.t option)
@@ -153,9 +183,12 @@ let rec of_typ_expr_in_constr
     ) >>= fun (source_name, generated_name) ->
     let* source_name = Name.of_string false source_name in
     let* generated_name = Name.of_string false generated_name in
-    let* typ = match constr with
-      | None -> return Kind.Set
-      | Some _ -> return (Kind.Tag) in
+    let* constr_is_gadt = match constr with
+      | Some constr -> is_path_gadt constr
+      | None -> return false in
+    let typ = if constr_is_gadt
+      then Kind.Tag
+      else Kind.Set in
     let new_typ_vars = Name.Map.singleton generated_name typ in
     let (typ_vars, name) =
       if Name.Map.mem source_name typ_vars
@@ -173,16 +206,36 @@ let rec of_typ_expr_in_constr
   | Ttuple typs ->
     of_typs_exprs_constr constr with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
     return (Tuple typs, typ_vars, new_typ_vars)
-  | Tconstr (path, typs, _) ->
+  | Tconstr (path, typs, abbr) ->
     let* mixed_path = MixedPath.of_path false path None in
-    (* Make sure it is not a type synonym before taging *)
-    let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
-    let constr = if is_variant then Some path else None in
-    let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr constr with_free_vars typ_vars typs in
-    let* typs = if is_variant
-      then typs |> Monad.List.map (tag_typ_constr path)
-      else return typs in
-    return (Apply (mixed_path, typs), typ_vars, new_typs_vars)
+    let* is_abstract = is_type_abstract path in
+    let* is_new_type = is_new_type path in
+    (* For unknown reasons a type variable becomes a Tconstr some times (see type of patterns)
+       This if is to try to figure out if such constructor was supposed to be a variable *)
+    if is_abstract && is_new_type && List.length typs = 0
+    then
+        let var_name = (Name.of_last_path path) in
+        let var = Variable var_name in
+        let* new_typ_vars = match constr with
+          | None -> return Name.Map.empty
+          | Some constr ->
+            let* constr_is_gadt = is_path_gadt constr in
+            if constr_is_gadt
+            then return @@ Name.Map.singleton var_name Kind.Tag
+            else return @@ Name.Map.empty
+        in
+      return @@ (var , typ_vars, new_typ_vars)
+    else
+      begin
+        (* Make sure it is not a type synonym before taging *)
+        let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
+        let constr = if is_variant then Some path else None in
+        let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr constr with_free_vars typ_vars typs in
+        let* typs = if is_variant
+          then typs |> Monad.List.map (tag_typ_constr path)
+          else return typs in
+        return (Apply (mixed_path, typs), typ_vars, new_typs_vars)
+      end
   | Tobject (_, object_descr) ->
     begin match !object_descr with
     | Some (path, _ :: typs) ->
@@ -272,8 +325,7 @@ let rec of_typ_expr_in_constr
      (path : Path.t)
      (typ : t)
    : t Monad.t =
-   let name = Path.last path in
-   if List.exists (function x -> name = x) ["int"; "list"; "option"; "bool"; "string"; "unit"]
+   if is_native_datatype path
    then return typ
    else tag_typ_constr_aux typ
 
@@ -304,7 +356,8 @@ let rec decode_var_tags
   | Variable name ->
     begin
       match constr with
-      | None -> begin match Name.Map.find_opt name typ_vars with
+      | None ->
+        begin match Name.Map.find_opt name typ_vars with
           | None -> return typ
           | Some Kind.Set -> return typ
           | Some Kind.Tag ->

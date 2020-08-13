@@ -232,9 +232,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
       Attribute.has_match_gadt_with_result attributes in
     let do_cast_results = Attribute.has_match_gadt_with_result attributes in
     let is_with_default_case = Attribute.has_match_with_default attributes in
-    let* typ = Type.of_type_expr_without_free_vars (e.exp_type) in
     let* e = of_expression typ_vars e in
-    (* of_match typ_vars e typ cases is_gadt_match do_cast_results is_with_default_case *)
     of_match typ_vars e cases is_gadt_match do_cast_results is_with_default_case
   | Texp_tuple es ->
     Monad.List.map (of_expression typ_vars) es >>= fun es ->
@@ -448,8 +446,11 @@ and of_match
     begin match cases with
     | [] -> return None
     | { c_lhs; c_rhs; _ }  :: _ ->
-      let* cast = Type.of_type_expr_without_free_vars (c_lhs.pat_type) in
-      let* motive = Type.of_type_expr_without_free_vars (c_rhs.exp_type) in
+      let* (cast, _, new_typ_vars) = Type.of_typ_expr true Name.Map.empty (c_lhs.pat_type) in
+      let* (motive, _, new_typ_vars') = Type.of_typ_expr true Name.Map.empty (c_rhs.exp_type) in
+      let new_typ_vars = Name.Map.union Type.typ_union new_typ_vars new_typ_vars' in
+      let* cast = Type.decode_var_tags new_typ_vars None cast in
+      let* motive = Type.decode_var_tags new_typ_vars None motive in
       let (cast, args) = Type.normalize_constructor cast in
       return (Some ({cast; args; motive}))
     end
