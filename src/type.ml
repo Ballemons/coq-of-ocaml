@@ -590,13 +590,19 @@ module Subst = struct
     path_name : PathName.t -> PathName.t }
 end
 
-let tag_notation (typs : t list): Name.t option =
+let tag_notation (typs : t list): t option =
   if List.length typs <> 2 then None
   else let typ = List.nth typs 1 in
     let name = tag_constructor_of typ in
+    let tagged_name = (Name.of_string_raw (name ^ "_tag")) in
     if List.mem name ["int"; "string"; "bool"; "float"]
-    then Some (Name.of_string_raw (name ^ "_tag"))
-    else None
+    then Some (Variable tagged_name)
+    else match typ with
+      | Apply (mname, ts) ->
+        if List.mem name ["list"; "option"]
+        then Some (Apply (MixedPath.of_name tagged_name, ts))
+        else None
+      | _ -> None
 
 (** Pretty-print a type. Use the [context] parameter to know if we should add
     parenthesis. *)
@@ -650,7 +656,7 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
     let tag = tag_notation typs in
     if MixedPath.is_tag path && Option.is_some tag
     then let tag = Option.get tag in
-      to_coq subst None (Variable tag)
+      to_coq subst (Some Context.Apply) tag
     else let path =
            match subst with
            | None -> path
