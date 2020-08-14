@@ -85,6 +85,13 @@ type t =
   | ErrorTyp of Type.t (** An error composed of a type. *)
   | ErrorMessage of t * string
     (** An expression together with an error message. *)
+  | Ltac of ltac
+
+and ltac =
+  | Subst
+  | Discriminate
+  | Exact of t
+  | Concat of ltac * ltac
 
 (** Take a function expression and make explicit the list of arguments and
     the body. *)
@@ -139,12 +146,13 @@ module ModuleTypValues = struct
     | _ -> return []
 end
 
-let capture_motive (e : t) (dep_match : dependent_pattern_match option) =
+let dependent_transform (e : t) (dep_match : dependent_pattern_match option) =
   match dep_match with
   | None -> e
   | Some { args; _ } ->
     let args = args |> List.mapi (fun i _ ->
         ("eq" ^ string_of_int i) |> Name.of_string_raw) in
+    let e = Ltac (Concat (Subst, Exact e)) in
     Functions(args, e)
 
 let rec any_patterns_with_ith_true (is_guarded : bool) (i : int) (n : int)
@@ -498,7 +506,7 @@ and of_match
     | Texp_unreachable -> return None
     | _ ->
       of_expression typ_vars c_rhs >>= fun e ->
-      let e = capture_motive e dep_match in
+      let e = dependent_transform e dep_match in
       return (
         Util.Option.map pattern (fun pattern ->
         (pattern, existential_cast, guard, e))
@@ -1315,7 +1323,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         )) ^^
         (if is_with_default_case then
            (* !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ !^ "unreachable_gadt_branch" ^^ newline *)
-           !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ !^ "ltac:(discriminate)" ^^ newline
+           !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ to_coq_ltac Discriminate ^^ newline
          else
            empty
         ) ^^
@@ -1389,6 +1397,17 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
   | ErrorTyp typ -> Pp.parens paren @@ Type.to_coq None None typ
   | ErrorMessage (e, error_message) ->
     group (Error.to_comment error_message ^^ newline ^^ to_coq paren e)
+  | Ltac tac -> to_coq_ltac tac
+                 
+and to_coq_ltac (tac : ltac) : SmartPrint.t =
+  !^ "ltac:" ^-^ parens (to_coq_tac tac)
+
+and to_coq_tac (tac : ltac) : SmartPrint.t =
+  match tac with
+  | Subst -> !^ "subst"
+  | Discriminate -> !^ "discriminate"
+  | Exact t -> !^ "exact" ^^ to_coq true t
+  | Concat (t1, t2) -> separate (!^ "; ") [to_coq_tac t1; to_coq_tac t2]
 
 and to_coq_try_single_let_pattern
   (paren : bool)
