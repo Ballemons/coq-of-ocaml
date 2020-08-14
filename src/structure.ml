@@ -13,9 +13,22 @@ module Value = struct
     | [] -> empty
     | _ :: _ ->
       separate (newline ^^ newline) (value.Exp.Definition.cases |> List.mapi (fun index (header, e) ->
-        let firt_case = index = 0 in
+        let first_case = index = 0 in
+        let { Exp.Header.name; typ_vars; args; typ; _ } = header in
+        let name = Name.to_coq name in
+        let pp_args = group (separate space (args |> List.map (fun (x, t) ->
+            parens @@ nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None t)
+          ))) ^^
+          Exp.Header.to_coq_structs header in
+        let pp_typ =
+          begin match typ with
+          | None -> empty
+          | Some typ -> !^ ": " ^-^ Type.to_coq None None typ
+          end ^-^
+          !^ (match typ with None -> ":=" | _ -> " :=") in
+
         nest (
-          begin if firt_case then
+          begin if first_case then
             begin if Recursivity.to_bool value.Exp.Definition.is_rec then
               !^ "Fixpoint"
             else
@@ -24,22 +37,23 @@ module Value = struct
           else
             !^ "with"
           end ^^
-          let { Exp.Header.name; typ_vars; args; typ; _ } = header in
-          Name.to_coq name ^^
+          name ^^
           Type.typ_vars_to_coq braces empty empty typ_vars
           ^^
-          group (separate space (args |> List.map (fun (x, t) ->
-            parens @@ nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None t)
-          ))) ^^
-          Exp.Header.to_coq_structs header ^^
-          begin match typ with
-          | None -> empty
-          | Some typ -> !^ ": " ^-^ Type.to_coq None None typ
-          end ^-^
-          !^ (match typ with None -> ":=" | _ -> " :=") ^^
+          pp_args ^^
+          pp_typ ^^
           begin match e with
           | None -> !^ "axiom"
-          | Some e -> Exp.to_coq false e
+          | Some e ->
+            begin match e with
+              | Exp.Apply (Exp.Match (_, Some _, _, _), _) ->
+                nest @@ !^ "let" ^^ name ^^ pp_args ^^ pp_typ ^^
+                        nest @@ name ^^
+                                separate space (args |> List.map (fun (x, _) ->
+                                  nest (Name.to_coq x) )) ^^ !^ "in"
+              | _ -> empty
+            end ^^
+            Exp.to_coq false e
           end
         )
       )) ^-^ !^ "."
