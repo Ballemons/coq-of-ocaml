@@ -7,6 +7,54 @@ open Monad.Notations
 module Value = struct
   type t = Exp.t option Exp.Definition.t
 
+  let rec is_recursive_dependent (fname : MixedPath.t) (is_dep : bool) (e : Exp.t) : bool =
+    let is_recdep = is_recursive_dependent fname is_dep in
+    match e with
+    | Exp.Constant _ -> false
+    | Variable (mpath, _) -> mpath = fname && is_dep
+    | Tuple ts -> List.exists is_recdep ts
+    | Type _ -> false
+    | Constructor _ -> false
+    | Apply (t, ts) -> List.exists is_recdep (t :: ts)
+    | Function (_, t) | Functions (_, t) -> is_recdep t
+    | LetVar (_, _, _, t, t') -> is_recdep t || is_recdep t'
+    | LetFun (_, t) -> is_recdep t
+    | LetTyp (_, _, _, t) -> is_recdep t
+    | LetModuleUnpack (_, _, t) -> is_recdep t
+    | Match (t, dep_match, pats, _) ->
+      let is_recdep = match dep_match with
+        | None -> is_recdep
+        | Some _ -> is_recursive_dependent fname true in
+      let ts : Exp.t list = List.map (fun (_, _, t) -> t) pats in
+      List.exists is_recdep (t :: ts)
+    | Record ts ->
+      let ts = List.map (fun (_, t) -> t) ts in
+      List.exists is_recdep ts
+    | Field (t, _) -> is_recdep t
+    | IfThenElse (t, ti, te) -> List.exists is_recdep [t; ti; te]
+    | Module (_, ts) ->
+      let ts = List.map (fun (_, _, t) -> t) ts in
+      List.exists is_recdep ts
+    | ModuleNested ts ->
+      let ts = List.map (fun (_, _, t) -> t) ts in
+      List.exists is_recdep ts
+    | ModuleCast _ -> false
+    | ModulePack t -> is_recdep t
+    | Functor (_, _, t) -> is_recdep t
+    | TypeAnnotation (t, _) -> is_recdep t
+    | Assert (_, t) -> is_recdep t
+    | Error _ -> false
+    | ErrorArray ts -> List.exists is_recdep ts
+    | ErrorTyp _ -> false
+    | ErrorMessage (t, _) -> is_recdep t
+    | Ltac tac -> is_recdep_ltac fname is_dep tac
+  and is_recdep_ltac fname is_dep (tac : Exp.ltac) : bool =
+    match tac with
+    | Exact t -> is_recursive_dependent fname is_dep t
+    | Concat (l1, l2) -> List.exists (is_recdep_ltac fname is_dep) [l1; l2]
+    | _ -> false
+
+
   (** Pretty-print a value definition to Coq. *)
   let to_coq (value : t) : SmartPrint.t =
     match value.Exp.Definition.cases with
@@ -15,7 +63,7 @@ module Value = struct
       separate (newline ^^ newline) (value.Exp.Definition.cases |> List.mapi (fun index (header, e) ->
         let first_case = index = 0 in
         let { Exp.Header.name; typ_vars; args; typ; _ } = header in
-        let name = Name.to_coq name in
+        let pp_name = Name.to_coq name in
         let pp_args = group (separate space (args |> List.map (fun (x, t) ->
             parens @@ nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None t)
           ))) ^^
@@ -37,7 +85,7 @@ module Value = struct
           else
             !^ "with"
           end ^^
-          name ^^
+          pp_name ^^
           Type.typ_vars_to_coq braces empty empty typ_vars
           ^^
           pp_args ^^
@@ -45,18 +93,19 @@ module Value = struct
           begin match e with
           | None -> !^ "axiom"
           | Some e ->
-            begin match e with
-              | Exp.Apply (Exp.Match (_, Some _, _, _), _) ->
-                nest @@ !^ "let" ^^ name ^^ pp_args ^^ pp_typ ^^
-                        nest @@ name ^^
+            begin
+              if is_recursive_dependent (MixedPath.of_name name) false e
+              then
+                nest @@ !^ "let" ^^ pp_name ^^ pp_args ^^ pp_typ ^^
+                        nest @@ pp_name ^^
                                 separate space (args |> List.map (fun (x, _) ->
-                                  nest (Name.to_coq x) )) ^^ !^ "in"
-              | _ -> empty
+                                    nest (Name.to_coq x) )) ^^ !^ "in"
+              else empty
             end ^^
             Exp.to_coq false e
           end
-        )
-      )) ^-^ !^ "."
+          )
+        )) ^-^ !^ "."
 end
 
 (** A structure. *)
