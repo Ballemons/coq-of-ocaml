@@ -3,31 +3,40 @@ open SmartPrint
 open Monad.Notations
 
 (** [Access] corresponds to projections from first-class modules. *)
+(** Second bool is to to flag gadt type constructors *)
 type t =
-  | Access of PathName.t * PathName.t list * bool
-  | PathName of PathName.t
+  | Access of PathName.t * PathName.t list * bool * bool
+  | PathName of PathName.t * bool
 
 let dec_name : t =
-  PathName ("decode_vtag" |> Name.of_string_raw |> PathName.of_name [])
+  PathName ("decode_vtag" |> Name.of_string_raw |> PathName.of_name [], false)
 
 (** Shortcut to introduce new local variables for example. *)
 let of_name (name : Name.t) : t =
-  PathName (PathName.of_name [] name)
+  PathName (PathName.of_name [] name, false)
 
-and is_tag (path : t) : bool =
+let of_name_gadt (name : Name.t) : t =
+  PathName (PathName.of_name [] name, true)
+
+let is_gadt (path : t) : bool =
+  match path with
+  | Access (_, _, _, is_gadt) -> is_gadt
+  | PathName (_, is_gadt) -> is_gadt
+
+let is_tag (path : t) : bool =
   match path with
   | Access _ -> false
-  | PathName { base; _ } ->
+  | PathName ({ base; _ }, _) ->
     if Name.to_string base = "constr_tag"
     then true
     else false
 
 let to_string : t -> string = function
-  | Access (path, fields, _) ->
+  | Access (path, fields, _, _) ->
     let fields = List.map PathName.to_string fields in
     let path = PathName.to_string path in
     List.fold_left (fun acc field -> acc ^ ".(" ^ field ^ ")") path fields
-  | PathName path -> PathName.to_string path
+  | PathName (path, _) -> PathName.to_string path
 
 let get_signature_path (path : Path.t) : Path.t option Monad.t =
   get_env >>= fun env ->
@@ -87,6 +96,7 @@ let of_path
   (path : Path.t)
   (long_ident : Longident.t option)
   : t Monad.t =
+  let* is_gadt = PathName.is_gadt path in
   of_path_aux path >>= fun (base_path, fields, signature_path) ->
   match (fields, signature_path) with
   | ([], None) ->
@@ -95,12 +105,12 @@ let of_path
     begin match conversion with
     | None ->
       begin match long_ident with
-      | None -> return (PathName path_name)
+      | None -> return (PathName (path_name, is_gadt))
       | Some long_ident ->
         PathName.of_long_ident is_value long_ident >>= fun path_name ->
-        return (PathName path_name)
+        return (PathName (path_name, is_gadt))
       end
-    | Some path_name -> return (PathName path_name)
+    | Some path_name -> return (PathName (path_name, is_gadt))
     end
   | _ ->
     is_module_path_local base_path >>= fun is_local ->
@@ -109,11 +119,11 @@ let of_path
       Name.of_string is_value field_string >>= fun field_name ->
       PathName.of_path_and_name_with_convert signature_path field_name
     )) >>= fun fields ->
-    return (Access (base_path_name, List.rev fields, is_local))
+    return (Access (base_path_name, List.rev fields, is_local, is_gadt))
 
 let to_coq (path : t) : SmartPrint.t =
   match path with
-  | Access (path, fields, is_local) ->
+  | Access (path, fields, is_local, _) ->
     let path = PathName.to_coq path in
     let path =
       if is_local then
@@ -123,4 +133,4 @@ let to_coq (path : t) : SmartPrint.t =
     let fields =
       fields |> List.map (fun field -> parens (PathName.to_coq field)) in
     separate (!^ ".") (path :: fields)
-  | PathName path_name -> PathName.to_coq path_name
+  | PathName (path_name, _) -> PathName.to_coq path_name

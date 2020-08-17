@@ -299,6 +299,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
                     MixedPath.Access (
                       reference,
                       [field],
+                      false,
                       false
                     ),
                     []

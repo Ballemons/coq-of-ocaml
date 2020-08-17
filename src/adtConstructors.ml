@@ -154,10 +154,10 @@ module Single = struct
             return (
               [
                 Type.Apply (
-                  MixedPath.PathName {
+                  MixedPath.PathName ({
                     path = [typ_name];
                     base = constructor_name;
-                  },
+                  }, false),
                   typ_args |> List.map (fun name ->
                       Type.Variable name
                     )
@@ -172,10 +172,10 @@ module Single = struct
                 },
                 typ_args,
                 Type.Apply (
-                  MixedPath.PathName {
+                  MixedPath.PathName ({
                     path = [typ_name];
                     base = Name.suffix_by_skeleton constructor_name;
-                  },
+                  }, false),
                   record_params
                 )
               )
@@ -196,9 +196,9 @@ module Single = struct
           return (List.map (fun v -> Type.Variable v) defined_typ_params, new_typ_vars)
       in
       let typ_vars = Name.Map.union Type.typ_union typ_vars new_typ_vars in
-      let typ_name = MixedPath.of_name typ_name in
-      let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None) param_typs in
-      let* return_typ_params = Monad.List.map (Type.decode_var_tags typ_vars (Some typ_name)) return_typ_params in
+      let typ_name = MixedPath.of_name_gadt typ_name in
+      let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None false) param_typs in
+      let* return_typ_params = Monad.List.map (Type.decode_var_tags typ_vars (Some typ_name) false) return_typ_params in
       return (
         {
           constructor_name;

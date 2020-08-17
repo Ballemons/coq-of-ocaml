@@ -105,14 +105,6 @@ let filter_typ_params_in_valid_set
       | _ -> false )
 
 
-let is_variant_declaration
-    (path : Path.t)
-  : Types.constructor_declaration list option Monad.t =
-  let* env = get_env in
-  match Env.find_type path env with
-  | { type_kind = Type_variant constructors; _ } -> return @@ Some constructors
-  | _ | exception _ -> return None
-
 let is_type_abstract
     (path : Path.t)
   : bool Monad.t =
@@ -132,7 +124,7 @@ let is_new_type
 let is_type_variant (t : Types.type_expr) : bool Monad.t =
   match t.desc with
   | Tconstr (path, _, _) ->
-    let* is_variant = is_variant_declaration path in
+    let* is_variant = PathName.is_variant_declaration path in
     return @@ Option.is_some is_variant
   | _ -> return false
 
@@ -149,19 +141,6 @@ let normalize_constructor (typ : t) : t * t list =
     (Apply (t, args), eqs)
   | _ -> (typ, [])
 
-
-let is_native_type (path : Path.t) : bool =
-   let name = Path.last path in
-   List.exists (function x -> name = x) ["int"; "bool"; "string"; "unit"]
-
-let is_native_datatype (path : Path.t) : bool =
-   let name = Path.last path in
-   List.exists (function x -> name = x) ["list"; "option"; "map"]
-
-let is_path_gadt (path : Path.t) : bool Monad.t =
-  let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
-  let is_native = is_native_datatype path in
-  return (is_variant && not is_native)
 
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr_in_constr
@@ -184,7 +163,7 @@ let rec of_typ_expr_in_constr
     let* source_name = Name.of_string false source_name in
     let* generated_name = Name.of_string false generated_name in
     let* constr_is_gadt = match constr with
-      | Some constr -> is_path_gadt constr
+      | Some constr -> PathName.is_gadt constr
       | None -> return false in
     let typ = if constr_is_gadt
       then Kind.Tag
@@ -219,7 +198,7 @@ let rec of_typ_expr_in_constr
         let* new_typ_vars = match constr with
           | None -> return Name.Map.empty
           | Some constr ->
-            let* constr_is_gadt = is_path_gadt constr in
+            let* constr_is_gadt = PathName.is_gadt constr in
             if constr_is_gadt
             then return @@ Name.Map.singleton var_name Kind.Tag
             else return @@ Name.Map.empty
@@ -228,7 +207,7 @@ let rec of_typ_expr_in_constr
     else
       begin
         (* Make sure it is not a type synonym before taging *)
-        let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
+        let* is_variant = PathName.is_variant_declaration path |> Monad.Option.is_some in
         let constr = if is_variant then Some path else None in
         let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr constr with_free_vars typ_vars typs in
         let* typs = if is_variant
@@ -269,7 +248,7 @@ let rec of_typ_expr_in_constr
     begin match path_name with
     | Some path_name ->
       return (
-        Apply (MixedPath.PathName path_name, []),
+        Apply (MixedPath.PathName (path_name, false), []),
         typ_vars,
         Name.Map.empty
       )
@@ -325,7 +304,7 @@ let rec of_typ_expr_in_constr
      (path : Path.t)
      (typ : t)
    : t Monad.t =
-   if is_native_datatype path
+   if PathName.is_native_datatype path
    then return typ
    else tag_typ_constr_aux typ
 
@@ -349,9 +328,10 @@ and of_typs_exprs_constr
 let rec decode_var_tags
     (typ_vars : Kind.t Name.Map.t)
     (constr: MixedPath.t option)
+    (in_native : bool)
     (typ : t)
   : t Monad.t =
-  let dec = decode_var_tags typ_vars constr in
+  let dec = decode_var_tags typ_vars constr in_native in
   match typ with
   | Variable name ->
     begin
@@ -364,18 +344,27 @@ let rec decode_var_tags
             let decname = MixedPath.dec_name in
             return @@ Apply (decname, [typ])
         end
-      | Some _ ->
-        return typ
+      | Some mpath ->
+        if MixedPath.is_gadt mpath || in_native
+        then return typ
+        else match Name.Map.find_opt name typ_vars with
+          | None -> return typ
+          | Some Kind.Set -> return typ
+          | Some Kind.Tag ->
+            let decname = MixedPath.dec_name in
+            return @@ Apply (decname, [typ])
     end
   | Arrow (t1, t2) ->
-    let* t1 = dec t1 in
-    let* t2 = dec t2 in
+    let* t1 = decode_var_tags typ_vars constr true t1 in
+    let* t2 = decode_var_tags typ_vars constr true t2 in
     return @@ Arrow (t1, t2)
   | Tuple ts ->
-    let* ts = Monad.List.map dec ts in
+    let* ts = Monad.List.map (decode_var_tags typ_vars constr true) ts in
     return @@ Tuple ts
   | Apply (mpath, ts) ->
-    let dec = decode_var_tags typ_vars (Some mpath) in
+    let path_str = MixedPath.to_string mpath in
+    let in_native = List.mem path_str ["tuple_tag"; "arrow_tag"; "list_tag"; "option_tag"] in
+    let dec = decode_var_tags typ_vars (Some mpath) in_native in
     let* ts = Monad.List.map dec ts in
     return @@ Apply (mpath, ts)
   | ForallModule (name, t1, t2) ->
@@ -510,7 +499,7 @@ let rec local_typ_constructors_of_typ (typ : t) : Name.Set.t =
   | Apply (mixed_path, typs) ->
     let local_typ_constructors = local_typ_constructors_of_typs typs in
     begin match mixed_path with
-    | MixedPath.PathName { path = []; base } ->
+    | MixedPath.PathName ({ path = []; base }, _) ->
       Name.Set.add base local_typ_constructors
     | _ -> local_typ_constructors
     end
@@ -662,8 +651,8 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
            | None -> path
            | Some subst ->
              begin match path with
-               | MixedPath.PathName path_name ->
-                 MixedPath.PathName (subst.path_name path_name)
+               | MixedPath.PathName (path_name, is_gadt) ->
+                 MixedPath.PathName (subst.path_name path_name, is_gadt)
                | _ -> path
              end in
       Pp.parens (Context.should_parens context Context.Apply && typs <> []) @@

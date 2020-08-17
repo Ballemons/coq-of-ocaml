@@ -49,7 +49,7 @@ type t =
     (** A constructor name, some implicits, and a list of arguments. *)
   | Apply of t * t list (** An application. *)
   | Function of Name.t * t (** An argument name and a body. *)
-  | Functions of Name.t list * t (** An argument name and a body. *)
+  | Functions of Name.t list * t (** Argument names and a body. *)
   | LetVar of string option * Name.t * Name.t list * t * t
     (** The let of a variable, with optionally a list of polymorphic variables.
         We optionally specify the symbol of the let operator as it may be
@@ -223,7 +223,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let normal_apply = Apply (e_f, e_xs) in
     begin match (e_f, e_xs) with
     | (
-        Variable (MixedPath.PathName path_name, []),
+        Variable (MixedPath.PathName (path_name, _), []),
         [e1; Function (x, e2)]
       ) ->
       let* configuration = get_configuration in
@@ -267,7 +267,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
   | Texp_variant (label, e) ->
     PathName.constructor_of_variant label >>= fun path_name ->
     let constructor =
-      Variable (MixedPath.PathName path_name, []) in
+      Variable (MixedPath.PathName (path_name, false), []) in
     begin match e with
     | None -> return constructor
     | Some e ->
@@ -297,7 +297,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
           List.fold_left
             (fun extended_e (x, e) ->
               Apply (
-                Variable (MixedPath.PathName (PathName.prefix_by_with x), []),
+                Variable (MixedPath.PathName (PathName.prefix_by_with x, false), []),
                 [e; extended_e]
               )
             )
@@ -457,8 +457,8 @@ and of_match
       let* (cast, _, new_typ_vars) = Type.of_typ_expr true Name.Map.empty (c_lhs.pat_type) in
       let* (motive, _, new_typ_vars') = Type.of_typ_expr true Name.Map.empty (c_rhs.exp_type) in
       let new_typ_vars = Name.Map.union Type.typ_union new_typ_vars new_typ_vars' in
-      let* cast = Type.decode_var_tags new_typ_vars None cast in
-      let* motive = Type.decode_var_tags new_typ_vars None motive in
+      let* cast = Type.decode_var_tags new_typ_vars None false cast in
+      let* motive = Type.decode_var_tags new_typ_vars None false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
       if List.length args = 0
@@ -528,7 +528,7 @@ and of_match
           (
             Pattern.Any,
             None,
-            Variable (MixedPath.PathName PathName.false_value, [])
+            Variable (MixedPath.PathName (PathName.false_value, false), [])
           )
         ],
         false
@@ -605,7 +605,7 @@ and import_let_fun
     | Some name ->
       of_expression typ_vars vb_expr >>= fun e ->
       let (args_names, e_body) = open_function e in
-      let* e_typ = Type.decode_var_tags new_typ_vars None e_typ in
+      let* e_typ = Type.decode_var_tags new_typ_vars None false e_typ in
       let (args_typs, e_body_typ) = Type.open_type e_typ (List.length args_names) in
       (* let args_typs = List.map (Tags.tag_type) args_typs in *)
       get_configuration >>= fun configuration ->
@@ -743,11 +743,11 @@ and of_module_expr
                   PathName.of_path_and_name_with_convert
                     local_module_type_path
                     value >>= fun field ->
-                  return (MixedPath.Access ( base, [field], false))
+                  return (MixedPath.Access (base, [field], false, false))
                 | None ->
                   PathName.of_path_and_name_with_convert path value
                     >>= fun path_name ->
-                  return (MixedPath.PathName path_name)
+                  return (MixedPath.PathName (path_name, false))
                 end >>= fun mixed_path ->
                 return (
                   field_name,
@@ -761,7 +761,7 @@ and of_module_expr
                   field_name,
                   0,
                   Variable (
-                    MixedPath.Access (PathName.of_name [] modul, [], false),
+                    MixedPath.Access (PathName.of_name [] modul, [], false, false),
                     []
                   )
                 )
@@ -772,7 +772,7 @@ and of_module_expr
                   field_name,
                   0,
                   Variable (
-                    MixedPath.PathName (PathName.of_name [] functo),
+                    MixedPath.PathName (PathName.of_name [] functo, false),
                     []
                   )
                 )
@@ -853,6 +853,7 @@ and of_module_expr
               MixedPath.Access (
                 { path = []; base = functor_result_name },
                 [],
+                false,
                 false
               )
             )
@@ -914,7 +915,7 @@ and of_structure
             field_name,
             0,
             Variable (
-              MixedPath.Access (PathName.of_name [] modul, [], false),
+              MixedPath.Access (PathName.of_name [] modul, [], false, false),
               []
             )
           )
@@ -925,7 +926,7 @@ and of_structure
             field_name,
             0,
             Variable (
-              MixedPath.PathName (PathName.of_name [] functo),
+              MixedPath.PathName (PathName.of_name [] functo, false),
               []
             )
           )
@@ -1082,7 +1083,7 @@ and of_include
           name,
           typ_vars,
           Variable (
-            MixedPath.Access (module_path_name, [signature_path_name], false),
+            MixedPath.Access (module_path_name, [signature_path_name], false, false),
             []
           ),
           e_next
@@ -1154,10 +1155,10 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
     begin match (e_f, e_xs) with
     | (
         Variable (
-          MixedPath.PathName {
+          MixedPath.PathName ({
             PathName.path = [Name.Make "Stdlib"];
             base = Name.Make "op_atat"
-          },
+          }, false) ,
           []
         ),
         [f; x]
@@ -1165,10 +1166,10 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
       to_coq paren (Apply (f, [x]))
     | (
         Variable (
-          MixedPath.PathName {
+          MixedPath.PathName ({
             PathName.path = [Name.Make "Stdlib"];
             base = Name.Make "op_pipegt"
-          },
+          }, false),
           []
         ),
         [x; f]
@@ -1199,7 +1200,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
     | (
         None,
         _,
-        Variable (PathName { path = []; base }, []),
+        Variable (PathName ({ path = []; base }, _), []),
         _
      ) when Name.equal base x ->
       to_coq paren e2
@@ -1209,10 +1210,10 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         _,
         Match (
           Variable (
-            MixedPath.PathName {
+            MixedPath.PathName ({
               PathName.path = [];
               base = Name.FunctionParameter
-            },
+            }, _),
             []
           ),
           _,
