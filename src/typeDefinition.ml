@@ -203,7 +203,7 @@ end
 type t =
   | Inductive of Inductive.t
   | Record of Name.t * Name.t list * (Name.t * Type.t) list * bool
-  | Synonym of Name.t * Name.t list * Type.t
+  | Synonym of Name.t * Kind.t Name.Map.t * Type.t
   | Abstract of Name.t * Name.t list
 
 let filter_in_free_vars
@@ -237,10 +237,11 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
         NotSupported
         "Polymorphic variant types are defined as standard algebraic types"
     | _ ->
-      Type.of_type_expr_without_free_vars typ >>= fun typ ->
-      let free_vars = Type.typ_args_of_typ typ in
-      let typ_args = filter_in_free_vars typ_args free_vars in
-      return (Synonym (name, typ_args, typ))
+      let* (typ, typ_vars, new_typ_vars) = Type.of_typ_expr true Name.Map.empty typ in
+      let* typ = Type.decode_var_tags new_typ_vars None false typ in
+      (* let free_vars = Type.typ_args_of_typ typ in *)
+      (* let typ_args = filter_in_free_vars typ_args free_vars in *)
+      return (Synonym (name, new_typ_vars, typ))
     end
   | [ { typ_id; typ_type = { type_kind = Type_abstract; type_manifest = None; type_params; _ }; typ_attributes; _ } ] ->
     Attribute.of_attributes typ_attributes >>= fun typ_attributes ->
@@ -268,7 +269,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
     let* name = Name.of_ident false typ_id in
     let typ = Type.Apply (MixedPath.of_name (Name.of_string_raw "extensible_type"), []) in
     raise
-      (Synonym (name, [], typ))
+      (Synonym (name, Name.Map.empty, typ))
       ExtensibleType
       "We do not handle extensible types"
   | _ ->
@@ -501,17 +502,13 @@ let to_coq (def : t) : SmartPrint.t =
             path_name
         | _ -> path_name
     } in
-    (* We recognize if an inductive is a tag if no tag was provided for it *)
     to_coq_inductive subst inductive
   | Record (name, typ_args, fields, with_with) ->
     AdtConstructors.RecordSkeleton.to_coq_record name name typ_args fields with_with
-  | Synonym (name, typ_args, value) ->
+  | Synonym (name, typ_vars, value) ->
     nest (
       !^ "Definition" ^^ Name.to_coq name ^^
-      begin match typ_args with
-      | [] -> empty
-      | _ -> parens (separate space (List.map Name.to_coq typ_args) ^^ !^ ":" ^^ Pp.set)
-      end ^^
+      Type.typ_vars_to_coq parens empty (empty) typ_vars ^^
       nest (!^ ":" ^^ Pp.set) ^^
       !^ ":=" ^^ Type.to_coq None None value ^-^ !^ "."
     )
