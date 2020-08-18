@@ -96,7 +96,7 @@ type item = {
   param_typs : Type.t list; (** The parameters of the constructor. *)
   res_typ_params : Type.t list;
   (** The type parameters of the result type of the constructor. *)
-  typ_vars : Kind.t Name.Map.t; (** The polymorphic type variables. *)
+  typ_vars : VarEnv.t; (** The polymorphic type variables. *)
 }
 
 (* We can probably get rid of this now *)
@@ -109,7 +109,7 @@ module Single = struct
     return_typ_params : Type.t list;
     (** The return type, in case of GADT constructor, with some inference to
         rule-out GADTs with only existential variables. *)
-    typ_vars : Kind.t Name.Map.t;
+    typ_vars : VarEnv.t;
   }
 
   let of_ocaml_case
@@ -191,11 +191,11 @@ module Single = struct
           end
         | None ->
           let new_typ_vars = List.fold_left (fun map typ_param ->
-              Name.Map.add typ_param Kind.Tag map
-            ) Name.Map.empty defined_typ_params in
-          return (List.map (fun v -> Type.Variable v) defined_typ_params, new_typ_vars)
+              (typ_param, Kind.Tag) :: map
+            ) [] defined_typ_params in
+          return (List.map (fun v -> Type.Variable v) defined_typ_params, List.rev new_typ_vars)
       in
-      let typ_vars = Name.Map.union Type.typ_union typ_vars new_typ_vars in
+      let typ_vars = VarEnv.union typ_vars new_typ_vars in
       let typ_name = MixedPath.of_name_gadt typ_name in
       let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None false) param_typs in
       let* return_typ_params = Monad.List.map (Type.decode_var_tags typ_vars (Some typ_name) false) return_typ_params in

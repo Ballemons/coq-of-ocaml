@@ -6,7 +6,7 @@ open Monad.Notations
 module Header = struct
   type t = {
     name : Name.t;
-    typ_vars : Kind.t Name.Map.t;
+    typ_vars : VarEnv.t;
     args : (Name.t * Type.t) list;
     structs : string list;
     typ : Type.t option }
@@ -133,7 +133,7 @@ module ModuleTypValues = struct
           Type.of_typ_expr true typ_vars val_type >>= fun (_, _, new_typ_vars) ->
           return (Some (Value (
             ident,
-            Name.Map.cardinal new_typ_vars
+            List.length new_typ_vars
           )))
         | Sig_module (ident, _, { Types.md_type = Mty_functor _; _ }, _, _) ->
           let* name = Name.of_ident false ident in
@@ -456,7 +456,7 @@ and of_match
     | { c_lhs; c_rhs; _ }  :: _ ->
       let* (cast, _, new_typ_vars) = Type.of_typ_expr true Name.Map.empty (c_lhs.pat_type) in
       let* (motive, _, new_typ_vars') = Type.of_typ_expr true Name.Map.empty (c_rhs.exp_type) in
-      let new_typ_vars = Name.Map.union Type.typ_union new_typ_vars new_typ_vars' in
+      let new_typ_vars = VarEnv.union new_typ_vars new_typ_vars' in
       let* cast = Type.decode_var_tags new_typ_vars None false cast in
       let* motive = Type.decode_var_tags new_typ_vars None false motive in
       let (cast, args) = Type.normalize_constructor cast in
@@ -670,7 +670,7 @@ and of_let
       | _ -> true
       end ->
       Type.of_typ_expr true typ_vars exp_type >>= fun (_, _, new_typ_vars) ->
-      return (Name.Map.cardinal new_typ_vars <> 0)
+      return (List.length new_typ_vars <> 0)
     | _ -> return true
     end >>= fun is_function ->
     begin match cases with
@@ -1070,7 +1070,7 @@ and of_include
       begin match signature_item with
       | Sig_value (_, { Types.val_type; _ }, _) ->
         Type.of_typ_expr true typ_vars val_type >>= fun (_, _, new_typ_vars) ->
-        let new_typ_vars = new_typ_vars |> Name.Map.bindings |> List.map fst in
+        let new_typ_vars = new_typ_vars |> List.map fst in
         return new_typ_vars
       | _ -> return []
       end >>= fun typ_vars ->

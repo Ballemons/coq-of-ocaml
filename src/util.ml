@@ -36,4 +36,13 @@ module Option = struct
           Some (x :: xs)
         )
       )
+
+  let rec reassoc (key : 'a) (ele :  'b) (l : ('a * 'b) list) : ('a * 'b) list =
+    match l with
+    | [] -> []
+    | (k, e) :: ls ->
+      if key = k
+      then (k, ele) :: ls
+      else (k, e) :: reassoc k e ls
+
 end

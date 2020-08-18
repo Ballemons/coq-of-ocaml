@@ -192,7 +192,7 @@ module Inductive = struct
           nest (
             separate space (
               (params |> List.map (fun _ -> !^ "_")) @
-              (typ_vars |> Name.Map.bindings |> List.map (fun _ -> !^ "_"))
+              (typ_vars |> List.map (fun _ -> !^ "_"))
             )
           )
         ) ^-^ !^ "."
@@ -203,7 +203,7 @@ end
 type t =
   | Inductive of Inductive.t
   | Record of Name.t * Name.t list * (Name.t * Type.t) list * bool
-  | Synonym of Name.t * Kind.t Name.Map.t * Type.t
+  | Synonym of Name.t * VarEnv.t * Type.t
   | Abstract of Name.t * Name.t list
 
 let filter_in_free_vars
@@ -269,7 +269,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
     let* name = Name.of_ident false typ_id in
     let typ = Type.Apply (MixedPath.of_name (Name.of_string_raw "extensible_type"), []) in
     raise
-      (Synonym (name, Name.Map.empty, typ))
+      (Synonym (name, [], typ))
       ExtensibleType
       "We do not handle extensible types"
   | _ ->
