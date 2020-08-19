@@ -241,6 +241,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
       let* typ = Type.decode_var_tags new_typ_vars None false typ in
       (* let free_vars = Type.typ_args_of_typ typ in *)
       (* let typ_args = filter_in_free_vars typ_args free_vars in *)
+      (* TODO: Preserve order of type parameters *)
       return (Synonym (name, new_typ_vars, typ))
     end
   | [ { typ_id; typ_type = { type_kind = Type_abstract; type_manifest = None; type_params; _ }; typ_attributes; _ } ] ->

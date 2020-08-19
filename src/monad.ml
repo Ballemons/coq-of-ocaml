@@ -132,6 +132,16 @@ module List = struct
       map f l >>= fun l ->
       return (x :: l)
 
+  let rec map2 (f : 'a -> 'b -> 'c t) (l :'a list) (l' : 'b list) : 'c list t =
+    match l, l' with
+    | [], [] -> return []
+    | x :: l, y :: l' ->
+      f x y >>= fun z ->
+      map2 f l l' >>= fun l ->
+      return (z :: l)
+    | _, _ -> raise [] Error.Category.Unexpected "List.Monad.map2 was applied on lists of different sizes"
+
+
   let rec lesser_and_greater
     (compare : 'a -> 'a -> int t) (x : 'a) (l : 'a list)
     : ('a list * 'a list) t =

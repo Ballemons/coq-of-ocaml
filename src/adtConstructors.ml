@@ -184,10 +184,10 @@ module Single = struct
       let* (return_typ_params, new_typ_vars) =
         match cd_res with
         | Some typ ->
-          Type.of_typ_expr false Name.Map.empty typ >>= fun (ty, _, new_typ_vars) ->
+          Type.of_typ_expr true Name.Map.empty typ >>= fun (ty, _, new_typ_vars) ->
           begin match ty with
             | Type.Apply (_, typs) -> return (typs, new_typ_vars)
-            | _ -> raise ([ty], new_typ_vars) Error.Category.Unexpected "Unexpected Type of record"
+            | _ -> raise ([ty], new_typ_vars) Error.Category.Unexpected "Unexpected Type of Constructor"
           end
         | None ->
           let new_typ_vars = List.fold_left (fun map typ_param ->

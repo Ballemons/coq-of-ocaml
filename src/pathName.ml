@@ -457,11 +457,19 @@ let typ_of_variants (labels : string list) : t option Monad.t =
 
 let is_variant_declaration
     (path : Path.t)
-  : Types.constructor_declaration list option Monad.t =
+  : (Types.constructor_declaration list * Types.type_expr list) option Monad.t =
   let* env = get_env in
   match Env.find_type path env with
-  | { type_kind = Type_variant constructors; _ } -> return @@ Some constructors
+  | { type_kind = Type_variant constructors; type_params = params; _ } -> return @@ Some (constructors, params)
   | _ | exception _ -> return None
+
+let is_synonym_declaration
+    (path : Path.t)
+  : Types.type_expr list Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_manifest = Some typ; type_params = params; _ } -> return @@ params
+  | _ | exception _ -> return []
 
 let is_native_type (path : Path.t) : bool =
    let name = Path.last path in
