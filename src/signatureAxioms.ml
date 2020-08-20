@@ -138,7 +138,8 @@ let rec of_signature (signature : Typedtree.signature) : t Monad.t =
           List.map (fun ({ Typedtree.ctyp_type; _ }, _) -> ctyp_type) |>
           AdtParameters.of_ocaml
         ) >>= fun typ_params ->
-        let typ_params = AdtParameters.get_parameters typ_params in
+        (* FIXME: Put typ params back *)
+        (* let typ_params = AdtParameters.get_parameters typ_params in *)
         let* name = Name.of_ident false ci_id_class_type in
         begin match ci_expr with
         | {
@@ -165,7 +166,8 @@ let rec of_signature (signature : Typedtree.signature) : t Monad.t =
             )) >>= fun fields ->
             return [TypDefinition (TypeDefinition.Record (
               name,
-              typ_params,
+              (* typ_params, *)
+              [],
               fields,
               false
             ))]

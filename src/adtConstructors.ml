@@ -12,70 +12,63 @@ module RecordSkeleton = struct
   let to_coq_record
       (module_name : Name.t)
       (typ_name : Name.t)
-      (typ_args : Name.t list)
+      (typ_args : VarEnv.t)
       (fields : (Name.t * Type.t) list)
       (with_with : bool)
     : SmartPrint.t =
     nest (
       !^ "Module" ^^ Name.to_coq module_name ^-^ !^ "." ^^ newline ^^
-      indent (
+      indent
         !^ "Record" ^^ !^ "record" ^^
-        begin match typ_args with
-          | [] -> empty
-          | _ :: _ ->
-            braces (nest (
-                separate space (List.map Name.to_coq typ_args) ^^
-                !^ ":" ^^ Pp.set
-              ))
-        end ^^
-        nest (!^ ":" ^^ Pp.set) ^^
-        !^ ":=" ^^ !^ "Build" ^^
-        !^ "{" ^^ newline ^^
-        indent (separate (!^ ";" ^^ newline) (fields |> List.map (fun (x, typ) ->
-            nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None typ)))) ^^
-        !^ "}." ^^
-        begin match typ_args with
-          | [] -> empty
-          | _ :: _ ->
-            newline ^^ !^ "Arguments" ^^ !^ "record" ^^ !^ ":" ^^
-            !^ "clear" ^^ !^ "implicits" ^-^ !^ "."
-        end ^^
-        newline ^^
-        begin if with_with then
-            separate newline (fields |> List.map (fun (name, _) ->
-                let prefixed_typ_args =
-                  typ_args |> List.map (fun typ_arg ->
-                      Name.to_coq (Name.prefix_by_t typ_arg)
-                    ) in
-                let record_typ =
-                  nest (separate space (!^ "record" :: prefixed_typ_args)) in
-                nest (
-                  !^ "Definition" ^^ Name.to_coq (Name.prefix_by_with name) ^^
-                  begin match typ_args with
-                    | [] -> empty
-                    | _ :: _ -> braces (nest (separate space prefixed_typ_args))
-                  end ^^
-                  Name.to_coq name ^^
-                  nest (parens (!^ "r" ^^ !^ ":" ^^ record_typ)) ^-^
-                  !^ " :=" ^^ newline ^^
-                  indent @@ nest (
-                    !^ "Build" ^^
-                    separate space prefixed_typ_args ^^
-                    separate space (fields |> List.map (fun (name', _) ->
-                        nest (
-                          if Name.equal name name' then
-                            Name.to_coq name
-                          else
-                            !^ "r" ^-^ !^ ".(" ^-^ Name.to_coq name' ^-^ !^ ")"
+      Type.typ_vars_to_coq braces empty empty typ_args ^^
+      nest (!^ ":" ^^ Pp.set) ^^
+      !^ ":=" ^^ !^ "Build" ^^
+      !^ "{" ^^ newline ^^
+      indent (separate (!^ ";" ^^ newline) (fields |> List.map (fun (x, typ) ->
+          nest (Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None typ))) ^^
+              !^ "}." ^^
+              begin match typ_args with
+                | [] -> empty
+                | _ :: _ ->
+                  newline ^^ !^ "Arguments" ^^ !^ "record" ^^ !^ ":" ^^
+                  !^ "clear" ^^ !^ "implicits" ^-^ !^ "."
+              end ^^
+              newline ^^
+              begin if with_with then
+                  separate newline (fields |> List.map (fun (name, _) ->
+                      let prefixed_typ_args =
+                        typ_args |> List.map (fun (typ_arg, _) ->
+                            Name.to_coq (Name.prefix_by_t typ_arg)
+                          ) in
+                      let record_typ =
+                        nest (separate space (!^ "record" :: prefixed_typ_args)) in
+                      nest (
+                        !^ "Definition" ^^ Name.to_coq (Name.prefix_by_with name) ^^
+                        begin match typ_args with
+                          | [] -> empty
+                          | _ :: _ -> braces (nest (separate space prefixed_typ_args))
+                        end ^^
+                        Name.to_coq name ^^
+                        nest (parens (!^ "r" ^^ !^ ":" ^^ record_typ)) ^-^
+                        !^ " :=" ^^ newline ^^
+                        indent @@ nest (
+                          !^ "Build" ^^
+                          separate space prefixed_typ_args ^^
+                          separate space (fields |> List.map (fun (name', _) ->
+                              nest (
+                                if Name.equal name name' then
+                                  Name.to_coq name
+                                else
+                                  !^ "r" ^-^ !^ ".(" ^-^ Name.to_coq name' ^-^ !^ ")"
+                              )
+                            )) ^-^ !^ "."
                         )
-                      )) ^-^ !^ "."
-                  )
-                )
-              )) ^^ newline
-          else
-            empty
-        end
-      ) ^^
+                      )
+                    )) ^^ newline
+                else
+                  empty
+              end
+        ) ^^
       !^ "End" ^^ Name.to_coq module_name ^-^ !^ "." ^^ newline ^^
       nest (
         !^ "Definition" ^^ Name.to_coq typ_name ^^ !^ ":=" ^^
@@ -85,7 +78,7 @@ module RecordSkeleton = struct
 
   let to_coq (record_skeleton : t) : SmartPrint.t =
     let { fields; module_name; typ_name } = record_skeleton in
-    to_coq_record module_name typ_name fields (fields |>
+    to_coq_record module_name typ_name (*fields*) [] (fields |>
                                                List.map (fun field -> (field, Type.Variable field))
                                               ) true
 end

@@ -32,6 +32,11 @@ let rec union_aux (env1 : t) (env2 : t) : t =
 let union (env1 : t) (env2 : t) : t =
   union_aux env1 env2
 
+let merge (env : t list) : t =
+  match env with
+  | [] -> []
+  | x :: xs -> List.fold_left (fun acc y -> union acc y) x xs
+
 let rec group_by_kind_aux
     (m : t)
     (kind : Kind.t)

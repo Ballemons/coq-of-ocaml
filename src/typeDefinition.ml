@@ -202,7 +202,7 @@ end
 
 type t =
   | Inductive of Inductive.t
-  | Record of Name.t * Name.t list * (Name.t * Type.t) list * bool
+  | Record of Name.t * VarEnv.t * (Name.t * Type.t) list * bool
   | Synonym of Name.t * VarEnv.t * Type.t
   | Abstract of Name.t * Name.t list
 
@@ -256,15 +256,25 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
     return (Abstract (name, typ_args_with_unknowns))
   | [ { typ_id; typ_type = { type_kind = Type_record (fields, _); type_params; _ }; _ } ] ->
     let* name = Name.of_ident false typ_id in
-    AdtParameters.of_ocaml type_params >>= fun typ_args ->
-    (fields |> Monad.List.map (fun { Types.ld_id = x; ld_type = typ; _ } ->
-      let* x = Name.of_ident false x in
-      Type.of_type_expr_without_free_vars typ >>= fun typ ->
-      return (x, typ)
-    )) >>= fun fields ->
-    let free_vars = Type.typ_args_of_typs (List.map snd fields) in
-    let typ_args = AdtParameters.get_parameters typ_args in
-    let typ_args = filter_in_free_vars typ_args free_vars in
+    (* let* typ_args AdtParameters.of_ocaml type_params in *)
+    let* fields_typ_vars : (Name.t * Type.t * VarEnv.t) list = fields |> Monad.List.map (fun { Types.ld_id = x; ld_type = typ; _ } ->
+        let* x = Name.of_ident false x in
+        let* (typ, typ_vars, new_typ_vars) = Type.of_typ_expr false Name.Map.empty typ in
+        return (x, typ, new_typ_vars)
+      ) in
+    let (names, typs, new_typs_vars) = List.fold_left (fun (names, typs, typs_vars) (name, typ, typ_vars) ->
+        (name :: names, typ :: typs, typ_vars :: typs_vars)
+      ) ([], [], [])
+        fields_typ_vars in
+
+    let fields = List.combine names typs |> List.rev in
+    let typ_args = VarEnv.merge new_typs_vars in
+    let* fields = fields |> Monad.List.map (fun (x, typ) ->
+        let* typ = Type.decode_var_tags typ_args None false typ in
+        return (x, typ)) in
+    (* let free_vars = Type.typ_args_of_typs (List.map snd fields) in *)
+    (* let typ_args = AdtParameters.get_parameters typ_args in *)
+    (* let typ_args = filter_in_free_vars typ_args free_vars in *)
     return (Record (name, typ_args, fields, true))
   | [ { typ_id; typ_type = { type_kind = Type_open; _ }; _ } ] ->
     let* name = Name.of_ident false typ_id in
