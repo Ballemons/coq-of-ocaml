@@ -65,6 +65,18 @@ let reserved_names : string list = [
   "Variable";
 ]
 
+let native_type_constructors = [
+  "list";
+  "option";
+]
+
+let native_types = [
+  "int";
+  "string";
+  "bool";
+  "float";
+]
+
 (** We only escape these names if they are used as values, as they may collide
     with the corresponding type names. *)
 let value_names_to_escape : string list = [

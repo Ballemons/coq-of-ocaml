@@ -457,8 +457,8 @@ and of_match
       let* (cast, _, new_typ_vars) = Type.of_typ_expr true Name.Map.empty (c_lhs.pat_type) in
       let* (motive, _, new_typ_vars') = Type.of_typ_expr true Name.Map.empty (c_rhs.exp_type) in
       let new_typ_vars = VarEnv.union new_typ_vars new_typ_vars' in
-      let* cast = Type.decode_var_tags new_typ_vars None false cast in
-      let* motive = Type.decode_var_tags new_typ_vars None false motive in
+      let* cast = Type.decode_var_tags new_typ_vars None false false cast in
+      let* motive = Type.decode_var_tags new_typ_vars None false false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
       if List.length args = 0
@@ -605,7 +605,7 @@ and import_let_fun
     | Some name ->
       of_expression typ_vars vb_expr >>= fun e ->
       let (args_names, e_body) = open_function e in
-      let* e_typ = Type.decode_var_tags new_typ_vars None false e_typ in
+      let* e_typ = Type.decode_var_tags new_typ_vars None false false e_typ in
       let (args_typs, e_body_typ) = Type.open_type e_typ (List.length args_names) in
       (* let args_typs = List.map (Tags.tag_type) args_typs in *)
       get_configuration >>= fun configuration ->

@@ -3,8 +3,8 @@ type t = (Name.t * Kind.t) list
 
 let to_string (env : t) : string =
   "[ " ^
-  (List.fold_left (fun s (name, _) ->
-       s ^ ", " ^ (Name.to_string name)
+  (List.fold_left (fun s (name, k) ->
+       s ^ ", " ^ (Name.to_string name) ^ " : " ^ (Kind.to_string k)
      )
      "" env)
   ^ " ]"

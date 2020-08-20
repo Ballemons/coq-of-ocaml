@@ -238,7 +238,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
         "Polymorphic variant types are defined as standard algebraic types"
     | _ ->
       let* (typ, typ_vars, new_typ_vars) = Type.of_typ_expr true Name.Map.empty typ in
-      let* typ = Type.decode_var_tags new_typ_vars None false typ in
+      let* typ = Type.decode_var_tags new_typ_vars None false false typ in
       (* let free_vars = Type.typ_args_of_typ typ in *)
       (* let typ_args = filter_in_free_vars typ_args free_vars in *)
       (* TODO: Preserve order of type parameters *)
@@ -269,8 +269,10 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
 
     let fields = List.combine names typs |> List.rev in
     let typ_args = VarEnv.merge new_typs_vars in
+    print_string (VarEnv.to_string typ_args);
+    print_string "\n";
     let* fields = fields |> Monad.List.map (fun (x, typ) ->
-        let* typ = Type.decode_var_tags typ_args None false typ in
+        let* typ = Type.decode_var_tags typ_args None false false typ in
         return (x, typ)) in
     (* let free_vars = Type.typ_args_of_typs (List.map snd fields) in *)
     (* let typ_args = AdtParameters.get_parameters typ_args in *)
@@ -278,7 +280,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
     return (Record (name, typ_args, fields, true))
   | [ { typ_id; typ_type = { type_kind = Type_open; _ }; _ } ] ->
     let* name = Name.of_ident false typ_id in
-    let typ = Type.Apply (MixedPath.of_name (Name.of_string_raw "extensible_type"), []) in
+    let typ = Type.Apply (MixedPath.of_name (Name.of_string_raw "extensible_type"), [], []) in
     raise
       (Synonym (name, [], typ))
       ExtensibleType
@@ -339,7 +341,8 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
             typ_args,
             Type.Apply (
               MixedPath.of_name (Name.suffix_by_skeleton name),
-              fields |> List.map snd
+              fields |> List.map snd,
+              List.map (fun _ -> false) fields
             )
           ) :: notations,
           {
@@ -428,7 +431,8 @@ let to_coq_typs
               group @@ separate space (param_typs |> List.map (fun param_typ ->
                 group (Type.to_coq (Some subst) (Some Type.Context.Arrow) param_typ ^^ !^ "->")
               )) ^^
-                     Type.to_coq (Some subst) None (Type.Apply (MixedPath.of_name name, res_typ_params))
+                       Type.to_coq (Some subst) None
+                         (Type.Apply (MixedPath.of_name name, res_typ_params, List.map (fun _ -> true) res_typ_params))
           )
         )
     )

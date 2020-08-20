@@ -153,7 +153,8 @@ module Single = struct
                   }, false),
                   typ_args |> List.map (fun name ->
                       Type.Variable name
-                    )
+                    ),
+                  List.map (fun _ -> false) typ_args
                 )
               ],
               new_typ_vars,
@@ -169,7 +170,8 @@ module Single = struct
                     path = [typ_name];
                     base = Name.suffix_by_skeleton constructor_name;
                   }, false),
-                  record_params
+                  record_params,
+                  List.map (fun _ -> false) record_params
                 )
               )
             ))
@@ -179,7 +181,7 @@ module Single = struct
         | Some typ ->
           Type.of_typ_expr true Name.Map.empty typ >>= fun (ty, _, new_typ_vars) ->
           begin match ty with
-            | Type.Apply (_, typs) -> return (typs, new_typ_vars)
+            | Type.Apply (_, typs, _) -> return (typs, new_typ_vars)
             | _ -> raise ([ty], new_typ_vars) Error.Category.Unexpected "Unexpected Type of Constructor"
           end
         | None ->
@@ -190,8 +192,8 @@ module Single = struct
       in
       let typ_vars = VarEnv.union typ_vars new_typ_vars in
       let typ_name = MixedPath.of_name_gadt typ_name in
-      let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None false) param_typs in
-      let* return_typ_params = Monad.List.map (Type.decode_var_tags typ_vars (Some typ_name) false) return_typ_params in
+      let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None false false) param_typs in
+      let* return_typ_params = Monad.List.map (Type.decode_var_tags typ_vars (Some typ_name) false true) return_typ_params in
       return (
         {
           constructor_name;
