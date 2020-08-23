@@ -7,7 +7,7 @@ type item =
   | Error of string
   | Module of Name.t * ModuleTyp.t
   | TypExistential of Name.t * Name.t list
-  | TypSynonym of Name.t * Name.t list * Type.t
+  | TypSynonym of Name.t * VarEnv.t * Type.t
   | Value of Name.t * VarEnv.t * Type.t
 
 type t = {
@@ -28,9 +28,10 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
       return (TypExistential (name, typ_args))
     | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
       let* name = Name.of_ident false ident in
-      Monad.List.map Type.of_type_expr_variable type_params >>= fun typ_args ->
-      Type.of_type_expr_without_free_vars typ >>= fun typ ->
-      return (TypSynonym (name, typ_args, typ))
+      Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
+      (* Monad.List.map Type.of_type_expr_variable type_params >>= fun typ_args -> *)
+      (* Type.of_type_expr_without_free_vars typ >>= fun typ -> *)
+      return (TypSynonym (name, new_typ_vars, typ))
     | Sig_typext (_, { ext_type_path; _ }, _, _) ->
       let name = Path.name ext_type_path in
       raise
@@ -159,9 +160,10 @@ let items_of_signature (signature : signature) : item list Monad.t =
           _
         } ] ->
         let* name = Name.of_ident false typ_id in
-        (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args ->
-        Type.of_type_expr_without_free_vars typ >>= fun typ ->
-        return [TypSynonym (name, typ_args, typ)]
+        (* (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args -> *)
+        (* Type.of_type_expr_without_free_vars typ >>= fun typ -> *)
+        Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
+        return [TypSynonym (name, new_typ_vars, typ)]
       | _ ->
         raise
           [Error "mutual_type"]
@@ -196,24 +198,13 @@ let to_coq_item (signature_item : item) : SmartPrint.t =
   | TypSynonym (name, typ_args, typ) ->
     nest (
       Name.to_coq name ^^
-      (match typ_args with
-      | [] -> empty
-      | _ ->
-        parens (separate space (List.map Name.to_coq typ_args) ^^ !^ ":" ^^ Pp.set)
+      Type.typ_vars_to_coq parens empty empty typ_args
       ) ^^ !^ ":=" ^^ Type.to_coq None None typ ^-^ !^ ";"
-    )
   | Value (name, typ_args, typ) ->
     nest (
       Name.to_coq name ^^ !^ ":" ^^
-      (match typ_args with
-      | [] -> empty
-      | _ :: _ ->
-        Type.typ_vars_to_coq braces (!^ "forall") (!^ ",") typ_args) ^^
-        (* !^ "forall" ^^ braces (group ( *)
-          (* separate space (List.map Name.to_coq typ_args) ^^ *)
-          (* !^ ":" ^^ Pp.set)) ^-^ !^ ",") ^^ *)
-        Type.to_coq None None typ ^-^ !^ ";"
-    )
+      Type.typ_vars_to_coq braces (!^ "forall") (!^ ",") typ_args)
+    ^^ Type.to_coq None None typ ^-^ !^ ";"
 
 let rec to_coq_type_kind (arity : int) : SmartPrint.t =
   if arity = 0 then
