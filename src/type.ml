@@ -150,13 +150,11 @@ let rec of_typ_expr_in_constr
         raise ("_", "_") NotSupported "The placeholders `_` in types are not handled"
     | Some x -> return (x, x)
     ) >>= fun (source_name, generated_name) ->
-    print_string ("Var: "  ^ generated_name ^ " should");
     let* source_name = Name.of_string false source_name in
     let* generated_name = Name.of_string false generated_name in
     let typ = if should_tag
       then Kind.Tag
-      else (print_string " not"; Kind.Set) in
-    print_string " tag\n";
+      else Kind.Set in
     let new_typ_vars = [(generated_name, typ)] in
     let (typ_vars, name) =
       if Name.Map.mem source_name typ_vars
@@ -178,7 +176,6 @@ let rec of_typ_expr_in_constr
     return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, abbr) ->
     let* mixed_path = MixedPath.of_path false path None in
-    print_string ("type: " ^ MixedPath.to_string mixed_path ^ "\n");
     let* is_abstract = is_type_abstract path in
     let* is_new_type = is_new_type path in
     (* For unknown reasons a type variable becomes a Tconstr some times (see type of patterns)
@@ -332,7 +329,6 @@ and get_constr_arg_tags
   let* is_variant = PathName.is_variant_declaration path in
   match is_variant with
   | Some (decls, params) ->
-    print_string "is_variant\n";
     let name = Path.last path in
     if List.mem name Name.native_type_constructors
     then return @@ tag_no_args params
@@ -345,8 +341,8 @@ and get_constr_arg_tags
         let* (typ, typ_vars, new_typ_vars) = of_typ_expr_in_constr false true Name.Map.empty typ in
         return @@ List.map (fun (_, kind) ->
             match kind with
-            | Kind.Set -> false
             | Kind.Tag -> true
+            | _ -> false
           ) new_typ_vars
       (* TODO: Preserve order of type parameters *)
       (* return [] *)
@@ -369,10 +365,10 @@ let rec decode_var_tags
       | None ->
         begin match List.assoc_opt name typ_vars with
           | None -> return typ
-          | Some Kind.Set -> return typ
           | Some Kind.Tag ->
             let decname = MixedPath.dec_name in
             return @@ Apply (decname, [typ], [true])
+          | Some _ -> return typ
         end
       | Some mpath ->
         if MixedPath.is_gadt mpath || in_native
@@ -380,12 +376,12 @@ let rec decode_var_tags
         then return typ
         else match List.assoc_opt name typ_vars with
           | None -> return typ
-          | Some Kind.Set -> return typ
           | Some Kind.Tag ->
             if not should_tag
             then let decname = MixedPath.dec_name in
               return @@ Apply (decname, [typ], [true])
             else return typ
+          | Some _ -> return typ
     end
   | Arrow (t1, t2) ->
     let* t1 = decode_var_tags typ_vars constr in_native true t1 in
@@ -398,7 +394,6 @@ let rec decode_var_tags
     let path_str = MixedPath.to_string mpath in
     let in_native = List.mem path_str ["tuple_tag"; "arrow_tag"; "list_tag"; "option_tag"] in
     let dec = decode_var_tags typ_vars (Some mpath) in_native in
-    (* print_string ("decoding: " ^ MixedPath.to_string mpath ^ "\n"); *)
     let ts = List.combine ts bs in
     let* ts = Monad.List.map (fun (t, b) -> dec b t) ts in
     return @@ Apply (mpath, ts, bs)
@@ -496,12 +491,17 @@ and existential_typs_of_typs (typs : Types.type_expr list)
 let rec typ_args_of_typ (typ : t) : Name.Set.t =
   match typ with
   | String x -> Name.Set.empty
-  | Variable x -> Name.Set.singleton x
+  | Variable x ->
+    (* print_string (Name.to_string x); print_string "\n"; *)
+    Name.Set.singleton x
   | Kind _ -> Name.Set.empty
   | Arrow (typ1, typ2) -> typ_args_of_typs [typ1; typ2]
   | Eq (typ1, typ2) -> typ_args_of_typs [typ1;typ2]
   | Sum typs -> typ_args_of_typs (List.map snd typs)
-  | Tuple typs | Apply (_, typs, _) -> typ_args_of_typs typs
+  | Tuple typs -> typ_args_of_typs typs
+  | Apply (mpath, typs, _) ->
+    print_string (MixedPath.to_string mpath ^ "\n");
+    typ_args_of_typs typs
   | Package (_, _, typ_params) ->
     Tree.flatten typ_params |>
     Util.List.filter_map (fun (_, typ) ->

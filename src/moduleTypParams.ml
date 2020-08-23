@@ -53,8 +53,22 @@ let mapper_get_arity
   | None ->
     Name.of_ident false ident >>= fun name ->
     let arity = List.length type_declaration.type_params in
+    print_string ("get_arity " ^ Name.to_string name ^ ": Some " ^ string_of_int arity ^ "\n");
     return (Some (Tree.Item (name, arity)))
-  | Some _ -> return None
+  | Some _ ->
+    print_string "get_arity None\n";
+    return None
+
+(* let mapper_get_arity
+ *   (ident : Ident.t)
+ *   (type_declaration : Types.type_declaration)
+ *   : Kind.t Tree.item option Monad.t =
+ *   match type_declaration.type_manifest with
+ *   | None ->
+ *     Name.of_ident false ident >>= fun name ->
+ *     let* (typ, typ_vars, new_typ_vars) = Type.of_typ_expr_in_constr false true Name.Map.empty typ in
+ *     return (Some (Tree.Item (name, kind)))
+ *   | Some _ -> return None *)
 
 let get_signature_typ_params_arity =
   get_signature_typ_params mapper_get_arity

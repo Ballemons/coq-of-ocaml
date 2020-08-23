@@ -8,7 +8,7 @@ type item =
   | Module of Name.t * ModuleTyp.t
   | TypExistential of Name.t * Name.t list
   | TypSynonym of Name.t * Name.t list * Type.t
-  | Value of Name.t * Name.t list * Type.t
+  | Value of Name.t * VarEnv.t * Type.t
 
 type t = {
   items: item list;
@@ -20,9 +20,8 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
     match signature_item with
     | Sig_value (ident, { val_type; _ }, _) ->
       let* name = Name.of_ident true ident in
-      Type.of_type_expr_without_free_vars val_type >>= fun typ ->
-      let typ_args = Name.Set.elements (Type.typ_args_of_typ typ) in
-      return (Value (name, typ_args, typ))
+      Type.of_typ_expr true Name.Map.empty val_type >>= fun (typ, _, new_typ_vars) ->
+      return (Value (name, new_typ_vars, typ))
     | Sig_type (ident, { type_manifest = None; type_params; _ }, _, _) ->
       let* name = Name.of_ident false ident in
       Monad.List.map Type.of_type_expr_variable type_params >>= fun typ_args ->
@@ -102,11 +101,6 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
         ("Class type '" ^ name ^ "' not handled.") in
   signature |> Monad.List.map of_types_signature_item
 
-let of_types_signature (signature : Types.signature) : t Monad.t =
-  items_of_types_signature signature >>= fun items ->
-  (ModuleTypParams.get_signature_typ_params_arity signature) >>= fun typ_params ->
-  return { items; typ_params }
-
 let items_of_signature (signature : signature) : item list Monad.t =
   let of_signature_item (signature_item : signature_item) : item list Monad.t =
     set_env signature_item.sig_env (
@@ -181,9 +175,9 @@ let items_of_signature (signature : signature) : item list Monad.t =
         "We do not handle extensible types"
     | Tsig_value { val_id; val_desc = { ctyp_type; _ }; _ } ->
       let* name = Name.of_ident true val_id in
-      Type.of_type_expr_without_free_vars ctyp_type >>= fun typ ->
-      let typ_args = Name.Set.elements (Type.typ_args_of_typ typ) in
-      return [Value (name, typ_args, typ)])) in
+      Type.of_typ_expr true Name.Map.empty ctyp_type >>= fun (typ, _, new_typ_vars) ->
+      (* let typ_args = Name.Set.elements (Type.typ_args_of_typ typ) in *)
+      return [Value (name, new_typ_vars, typ)])) in
   signature.sig_items |> Monad.List.flatten_map of_signature_item
 
 let of_signature (signature : signature) : t Monad.t =
@@ -214,10 +208,11 @@ let to_coq_item (signature_item : item) : SmartPrint.t =
       (match typ_args with
       | [] -> empty
       | _ :: _ ->
-        !^ "forall" ^^ braces (group (
-          separate space (List.map Name.to_coq typ_args) ^^
-          !^ ":" ^^ Pp.set)) ^-^ !^ ",") ^^
-      Type.to_coq None None typ ^-^ !^ ";"
+        Type.typ_vars_to_coq braces (!^ "forall") (!^ ",") typ_args) ^^
+        (* !^ "forall" ^^ braces (group ( *)
+          (* separate space (List.map Name.to_coq typ_args) ^^ *)
+          (* !^ ":" ^^ Pp.set)) ^-^ !^ ",") ^^ *)
+        Type.to_coq None None typ ^-^ !^ ";"
     )
 
 let rec to_coq_type_kind (arity : int) : SmartPrint.t =
