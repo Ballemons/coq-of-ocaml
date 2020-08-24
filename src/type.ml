@@ -180,8 +180,10 @@ let rec of_typ_expr_in_constr
     let* is_new_type = is_new_type path in
     (* For unknown reasons a type variable becomes a Tconstr some times (see type of patterns)
        This `if` is to try to figure out if such constructor was supposed to be a variable *)
-    if is_abstract && is_new_type && List.length typs = 0
+    if is_abstract && List.length typs = 0
+    (* if is_abstract && is_new_type && List.length typs = 0 *)
     then
+      (
         let var_name = (Name.of_last_path path) in
         let var = Variable var_name in
         let* new_typ_vars =
@@ -190,6 +192,7 @@ let rec of_typ_expr_in_constr
             else return [(var_name, Kind.Set)]
         in
       return @@ (var , typ_vars, new_typ_vars)
+    )
     else
       begin
         let* tag_list = get_constr_arg_tags path in

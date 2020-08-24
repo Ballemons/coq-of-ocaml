@@ -12,7 +12,9 @@ type item =
 
 type t = {
   items: item list;
-  typ_params: int ModuleTypParams.t }
+  (* typ_params: (PathName.t * int) list *)
+  typ_params: int ModuleTypParams.t
+}
 
 let items_of_types_signature (signature : Types.signature) : item list Monad.t =
   let of_types_signature_item (signature_item : Types.signature_item)
@@ -29,8 +31,6 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
     | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
       let* name = Name.of_ident false ident in
       Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
-      (* Monad.List.map Type.of_type_expr_variable type_params >>= fun typ_args -> *)
-      (* Type.of_type_expr_without_free_vars typ >>= fun typ -> *)
       return (TypSynonym (name, new_typ_vars, typ))
     | Sig_typext (_, { ext_type_path; _ }, _, _) ->
       let name = Path.name ext_type_path in
@@ -178,14 +178,16 @@ let items_of_signature (signature : signature) : item list Monad.t =
     | Tsig_value { val_id; val_desc = { ctyp_type; _ }; _ } ->
       let* name = Name.of_ident true val_id in
       Type.of_typ_expr true Name.Map.empty ctyp_type >>= fun (typ, _, new_typ_vars) ->
-      (* let typ_args = Name.Set.elements (Type.typ_args_of_typ typ) in *)
       return [Value (name, new_typ_vars, typ)])) in
   signature.sig_items |> Monad.List.flatten_map of_signature_item
 
 let of_signature (signature : signature) : t Monad.t =
   push_env (
-  items_of_signature signature >>= fun items ->
   ModuleTypParams.get_signature_typ_params_arity signature.sig_type >>= fun typ_params ->
+  let typ_params = Tree.flatten typ_params in
+  (* let typ_vars = ModuleTypParams.build_varenv typ_params in *)
+  items_of_signature signature >>= fun items ->
+
   return { items; typ_params })
 
 let to_coq_item (signature_item : item) : SmartPrint.t =
@@ -214,7 +216,7 @@ let rec to_coq_type_kind (arity : int) : SmartPrint.t =
 
 let to_coq_definition (name : Name.t) (signature : t) : SmartPrint.t =
   let typ_params : (SmartPrint.t * int) list =
-    Tree.flatten signature.typ_params |> List.map (fun (path_name, arity) ->
+    signature.typ_params |> List.map (fun (path_name, arity) ->
       (ModuleTypParams.to_coq_typ_param_name path_name, arity)
     ) in
   let reversed_grouped_typ_params : (SmartPrint.t list * int) list =

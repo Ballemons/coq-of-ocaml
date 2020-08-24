@@ -9,13 +9,6 @@ let to_string (env : t) : string =
      "" env)
   ^ " ]"
 
-(* TODO: Rethink specializatin of tag types *)
-let kind_union k1 k2 : Kind.t =
-  match k1, k2 with
-  | Kind.Set , t -> t
-  | t, Kind.Set -> t
-  | t, _ -> t
-
 (* Union preserves the ordering of the first argument *)
 let rec union_aux (env1 : t) (env2 : t) : t =
   match env1 with
@@ -26,7 +19,7 @@ let rec union_aux (env1 : t) (env2 : t) : t =
       (name, kind) :: union_aux env env2
     | Some kind' ->
       let env2 = List.remove_assoc name env2 in
-      let kind = kind_union kind kind' in
+      let kind = Kind.union kind kind' in
       (name, kind) :: union_aux env env2
 
 let union (env1 : t) (env2 : t) : t =

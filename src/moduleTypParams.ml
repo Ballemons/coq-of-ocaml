@@ -53,10 +53,10 @@ let mapper_get_arity
   | None ->
     Name.of_ident false ident >>= fun name ->
     let arity = List.length type_declaration.type_params in
-    print_string ("get_arity " ^ Name.to_string name ^ ": Some " ^ string_of_int arity ^ "\n");
+    (* print_string ("get_arity " ^ Name.to_string name ^ ": Some " ^ string_of_int arity ^ "\n"); *)
     return (Some (Tree.Item (name, arity)))
   | Some _ ->
-    print_string "get_arity None\n";
+    (* print_string "get_arity None\n"; *)
     return None
 
 (* let mapper_get_arity
@@ -79,5 +79,20 @@ let get_module_typ_typ_params_arity =
 let get_module_typ_declaration_typ_params_arity =
   get_module_typ_declaration_typ_params mapper_get_arity
 
+let build_varenv
+  (t : int t)
+  : VarEnv.t =
+  List.fold_left (fun acc x ->
+      (match x with
+      | Tree.Item (name, arity) ->
+        if arity = 0
+        then Some (name, Kind.Set)
+        else None
+      | _ -> None) :: acc
+    ) [] t |> List.filter_map (fun x -> x)
+
+
 let to_coq_typ_param_name (path_name : PathName.t) : SmartPrint.t =
   separate (!^ "_") (List.map Name.to_coq (path_name.path @ [path_name.base]))
+
+(* Union preserves the ordering of the first argument *)

@@ -59,3 +59,40 @@ let rec pp (pp_a : 'a -> SmartPrint.t option) (tree : 'a t) : SmartPrint.t =
       | Some doc -> !^ ":" ^^ doc)
     | Module (name, tree) -> Name.to_coq name ^-^ !^ ":" ^^ pp pp_a tree in
   OCaml.list pp_item tree
+
+let rec find_item (key : Name.t) (tree : 'a t) : 'a option =
+  match tree with
+  | [] -> None
+  | Item (name, k) :: tree ->
+    if name = key
+    then Some k
+    else find_item key tree
+  | Module (name, k) :: tree ->
+    find_item key tree
+
+let rec remove_item (key : Name.t) (tree : 'a t) : 'a t =
+  match tree with
+  | [] -> []
+  | Item (name, k) :: tree ->
+    if name = key
+    then tree
+    else Item (name, k) :: remove_item key tree
+  | tree' :: tree ->
+    tree' :: remove_item key tree
+
+let rec union_aux (env1 : Kind.t t) (env2 : Kind.t t) : Kind.t t =
+  match env1 with
+  | [] -> env2
+  | Module (name, sub) :: env ->
+    Module(name, sub) :: union_aux env env2
+  | Item (name, kind) :: env ->
+    match find_item name env2 with
+    | None ->
+      Item (name, kind) :: union_aux env env2
+    | Some kind' ->
+      let env2 = remove_item name env2 in
+      let kind = Kind.union kind kind' in
+      Item (name, kind) :: union_aux env env2
+
+let union (env1 : Kind.t t) (env2 : Kind.t t) : Kind.t t =
+  union_aux env1 env2
