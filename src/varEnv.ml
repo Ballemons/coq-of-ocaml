@@ -58,3 +58,13 @@ let group_by_kind
       then ((k, [name]) :: ls)
       else ((k, [name]) :: (k', names) :: ls)
 
+let rec remove (key : Name.t) (varenv : t) : t =
+  match varenv with
+  | [] -> []
+  | (name, kind) :: varenv ->
+    if name = key
+    then varenv
+    else (name, kind) :: remove key varenv
+
+let rec remove_many (keys : Name.t list) (varenv : t) : t =
+  List.fold_left (fun varenv key -> remove key varenv) varenv keys

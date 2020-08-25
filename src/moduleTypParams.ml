@@ -93,15 +93,17 @@ let get_module_typ_declaration_typ_params_kind =
   get_module_typ_declaration_typ_params mapper_get_kind
 
 let build_varenv
-  (t : int t)
+  (t : Kind.t t)
   : VarEnv.t =
   List.fold_left (fun acc x ->
       (match x with
-      | Tree.Item (name, arity) ->
-        if arity = 0
-        then Some (name, Kind.Set)
-        else None
-      | _ -> None) :: acc
+       | Tree.Item (name, kind) ->
+         begin
+           match kind with
+           | Kind.Tag | Kind.Set -> Some (name, kind)
+           | Kind.Arrow _ -> None
+         end
+       | _ -> None) :: acc
     ) [] t |> List.filter_map (fun x -> x)
 
 
