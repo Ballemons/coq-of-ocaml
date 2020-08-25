@@ -170,7 +170,6 @@ let items_of_signature
       end >>= fun () ->
       let* name = Name.of_ident false typ_id in
       (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args ->
-      print_string "typ existencial\n";
       return ([TypExistential (name, typ_args)], [])
     | Tsig_type (_, typs) | Tsig_typesubst typs ->
       begin match typs with

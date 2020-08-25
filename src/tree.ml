@@ -74,7 +74,7 @@ let rec find_item (key : Name.t) (tree : 'a t) : 'a option =
 let rec update_item (key : Name.t) (item : 'a) (tree : 'a t) : 'a t =
   match tree with
   | [] -> []
-  | Module (name, k) :: tree -> update_item key item tree
+  | Module (name, k) :: tree -> Module (name, k) :: update_item key item tree
   | Item (name, k) :: tree ->
     if name = key
     then Item (name, item) :: tree
