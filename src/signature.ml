@@ -12,29 +12,29 @@ type item =
 
 type t = {
   items: item list;
-  typ_params: int ModuleTypParams.t
+  typ_params: Kind.t ModuleTypParams.t
 }
 
-let items_of_types_signature (signature : Types.signature) : item list Monad.t =
+let items_of_types_signature (signature : Types.signature) : (item list * VarEnv.t) Monad.t =
   let of_types_signature_item (signature_item : Types.signature_item)
-    : item Monad.t =
+    : (item * VarEnv.t) Monad.t =
     match signature_item with
     | Sig_value (ident, { val_type; _ }, _) ->
       let* name = Name.of_ident true ident in
       Type.of_typ_expr true Name.Map.empty val_type >>= fun (typ, _, new_typ_vars) ->
-      return (Value (name, new_typ_vars, typ))
+      return (Value (name, new_typ_vars, typ), new_typ_vars)
     | Sig_type (ident, { type_manifest = None; type_params; _ }, _, _) ->
       let* name = Name.of_ident false ident in
       Monad.List.map Type.of_type_expr_variable type_params >>= fun typ_args ->
-      return (TypExistential (name, typ_args))
+      return (TypExistential (name, typ_args), [])
     | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
       let* name = Name.of_ident false ident in
       Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
-      return (TypSynonym (name, new_typ_vars, typ))
+      return (TypSynonym (name, new_typ_vars, typ), new_typ_vars)
     | Sig_typext (_, { ext_type_path; _ }, _, _) ->
       let name = Path.name ext_type_path in
       raise
-        (Error ("extensible_type_definition `" ^ name ^ "`"))
+        (Error ("extensible_type_definition `" ^ name ^ "`"), [])
         NotSupported
         ("Extensible type '" ^ name ^ "' not handled")
     | Sig_module (ident, _, { md_type; _ }, _, _) ->
@@ -59,7 +59,7 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
         ModuleTypParams.get_module_typ_typ_params
           mapper md_type >>= fun typ_params ->
         raise
-          (Module (name, ModuleTyp.With (signature_path_name, typ_params)))
+          (Module (name, ModuleTyp.With (signature_path_name, typ_params)), [])
           Module
           (
             "Sub-module '" ^ Ident.name ident ^ "' in included " ^
@@ -73,7 +73,7 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
           )
       | Not_found reason ->
         raise
-          (Error ("module " ^ Ident.name ident))
+          (Error ("module " ^ Ident.name ident), [])
           Module
           (
             "Signature name for the module '" ^ Ident.name ident ^
@@ -84,61 +84,66 @@ let items_of_types_signature (signature : Types.signature) : item list Monad.t =
     | Sig_modtype (ident, _, _) ->
       let name = Ident.name ident in
       raise
-        (Error ("module_type" ^ name))
+        (Error ("module_type" ^ name), [])
         NotSupported
         ("Signatures '" ^ name ^ "' inside signature is not handled")
     | Sig_class (ident, _, _, _) ->
       let name = Ident.name ident in
       raise
-        (Error ("class" ^ name))
+        (Error ("class" ^ name), [])
         NotSupported
         ("Class '" ^ name ^ "' not handled.")
     | Sig_class_type (ident, _, _, _) ->
       let name = Ident.name ident in
       raise
-        (Error ("class_type" ^ name))
+        (Error ("class_type" ^ name), [])
         NotSupported
         ("Class type '" ^ name ^ "' not handled.") in
-  signature |> Monad.List.map of_types_signature_item
+  let* (items, varenv) = signature |> Monad.List.fold_left (fun (acc_item, acc_varenv) item ->
+      let* (item, varenv) = of_types_signature_item item in
+      return @@ (item :: acc_item, VarEnv.union acc_varenv varenv)
+    ) ([], []) in
+  return (List.rev items, varenv)
 
-let items_of_signature (signature : signature) : item list Monad.t =
-  let of_signature_item (signature_item : signature_item) : item list Monad.t =
+let items_of_signature (signature : signature) : (item list * VarEnv.t) Monad.t =
+  let of_signature_item (signature_item : signature_item) : (item list * VarEnv.t) Monad.t =
     set_env signature_item.sig_env (
     set_loc (Loc.of_location signature_item.sig_loc) (
     match signature_item.sig_desc with
-    | Tsig_attribute _ -> return []
+    | Tsig_attribute _ -> return ([], [])
     | Tsig_class _ ->
-      raise [Error "class"] NotSupported "Signature item `class` not handled."
+      raise ([Error "class"], []) NotSupported "Signature item `class` not handled."
     | Tsig_class_type _ ->
       raise
-        [Error "class_type"]
+        ([Error "class_type"], [])
         NotSupported
         "Signature item `class_type` not handled."
     | Tsig_exception _ ->
       raise
-        [Error "exception"]
+        ([Error "exception"], [])
         SideEffect
         "Signature item `exception` not handled."
     | Tsig_include { incl_type; _ } -> items_of_types_signature incl_type
     | Tsig_modsubst _ ->
       raise
-        [Error "module_substitution"]
+        ([Error "module_substitution"], [])
         NotSupported
         "We do not handle module substitutions"
     | Tsig_modtype _ ->
       raise
-        [Error "module_type"]
+        ([Error "module_type"], [])
         NotSupported
         "Signatures inside signatures are not handled."
     | Tsig_module { md_id; md_type; _ } ->
       push_env (
       let* name = Name.of_ident false md_id in
       ModuleTyp.of_ocaml md_type >>= fun module_typ ->
-      return [Module (name, module_typ)])
+      return ([Module (name, module_typ)], [])
+    )
     | Tsig_open _ ->
-      raise [Error "open"] NotSupported "Signature item `open` not handled."
+      raise ([Error "open"], []) NotSupported "Signature item `open` not handled."
     | Tsig_recmodule _ ->
-      raise [Error "recursive_module"] NotSupported "Recursive module signatures are not handled."
+      raise ([Error "recursive_module"], []) NotSupported "Recursive module signatures are not handled."
     | Tsig_type (_, [ { typ_id; typ_type = { type_manifest = None; type_kind; type_params; _ }; _ } ]) ->
       begin match type_kind with
       | Type_abstract -> return ()
@@ -150,7 +155,7 @@ let items_of_signature (signature : signature) : item list Monad.t =
       end >>= fun () ->
       let* name = Name.of_ident false typ_id in
       (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args ->
-      return [TypExistential (name, typ_args)]
+      return ([TypExistential (name, typ_args)], [])
     | Tsig_type (_, typs) | Tsig_typesubst typs ->
       begin match typs with
       | [ {
@@ -160,30 +165,35 @@ let items_of_signature (signature : signature) : item list Monad.t =
         } ] ->
         let* name = Name.of_ident false typ_id in
         Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
-        return [TypSynonym (name, new_typ_vars, typ)]
+        return ([TypSynonym (name, new_typ_vars, typ)], new_typ_vars)
       | _ ->
         raise
-          [Error "mutual_type"]
+          ([Error "mutual_type"], [])
           NotSupported
           "Mutual type definitions in signatures not handled."
       end
     | Tsig_typext { tyext_path; _ } ->
       raise
-        [Error ("extensible_type " ^ Path.last tyext_path)]
+        ([Error ("extensible_type " ^ Path.last tyext_path)], [])
         ExtensibleType
         "We do not handle extensible types"
     | Tsig_value { val_id; val_desc = { ctyp_type; _ }; _ } ->
       let* name = Name.of_ident true val_id in
       Type.of_typ_expr true Name.Map.empty ctyp_type >>= fun (typ, _, new_typ_vars) ->
-      return [Value (name, new_typ_vars, typ)])) in
-  signature.sig_items |> Monad.List.flatten_map of_signature_item
+      return ([Value (name, new_typ_vars, typ)], new_typ_vars))) in
+  let* (items, varenv) = signature.sig_items |> Monad.List.fold_left (fun (acc_items, acc_varenv) item ->
+      let* (items, varenv) = of_signature_item item in
+      return (items @ acc_items, VarEnv.union acc_varenv varenv)
+    ) ([], []) in
+  return (List.rev items, varenv)
 
 let of_signature (signature : signature) : t Monad.t =
   push_env (
-  ModuleTypParams.get_signature_typ_params_arity signature.sig_type >>= fun typ_params ->
+  let* typ_params = ModuleTypParams.get_signature_typ_params_kind signature.sig_type in
   (* let typ_params = Tree.flatten typ_params in *)
   (* let typ_vars = ModuleTypParams.build_varenv typ_params in *)
-  items_of_signature signature >>= fun items ->
+  items_of_signature signature >>= fun (items, varenv) ->
+  let typ_params = Tree.update_items varenv typ_params in
 
   return { items; typ_params })
 
@@ -212,34 +222,34 @@ let rec to_coq_type_kind (arity : int) : SmartPrint.t =
     Pp.set ^^ !^ "->" ^^ to_coq_type_kind (arity - 1)
 
 let to_coq_definition (name : Name.t) (signature : t) : SmartPrint.t =
-  let typ_params : (SmartPrint.t * int) list =
-    Tree.flatten signature.typ_params |> List.map (fun (path_name, arity) ->
-      (ModuleTypParams.to_coq_typ_param_name path_name, arity)
+  let typ_params : (SmartPrint.t * Kind.t) list =
+    Tree.flatten signature.typ_params |> List.map (fun (path_name, kind) ->
+      (ModuleTypParams.to_coq_typ_param_name path_name, kind)
     ) in
-  let reversed_grouped_typ_params : (SmartPrint.t list * int) list =
+  let reversed_grouped_typ_params : (SmartPrint.t list * Kind.t) list =
     List.fold_left
-      (fun grouped (typ_param, arity) ->
+      (fun grouped (typ_param, kind) ->
         match grouped with
-        | [] -> [([typ_param], arity)]
-        | (typ_params, arity') :: grouped' ->
-          if arity = arity' then
-            (typ_param :: typ_params, arity') :: grouped'
+        | [] -> [([typ_param], kind)]
+        | (typ_params, kind') :: grouped' ->
+          if kind = kind' then
+            (typ_param :: typ_params, kind') :: grouped'
           else
-            ([typ_param], arity) :: grouped
+            ([typ_param], kind) :: grouped
       )
       []
       typ_params in
   let grouped_typ_params =
     reversed_grouped_typ_params |>
-    List.map (fun (typ_params, arity) -> (List.rev typ_params, arity)) |>
+    List.map (fun (typ_params, kind) -> (List.rev typ_params, kind)) |>
     List.rev in
   !^ "Module" ^^ Name.to_coq name ^-^ !^ "." ^^ newline ^^
   indent (
     nest (
       !^ "Record" ^^ !^ "signature" ^^
-      separate space (grouped_typ_params |> List.map (fun (typ_params, arity) ->
+      separate space (grouped_typ_params |> List.map (fun (typ_params, kind) ->
         braces (
-          separate space typ_params ^^ !^ ":" ^^ to_coq_type_kind arity
+          separate space typ_params ^^ !^ ":" ^^ Kind.to_coq kind
         )
       )) ^^
       nest (!^ ":" ^^ Pp.set) ^^

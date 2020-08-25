@@ -6,11 +6,11 @@ type t =
   | Tag
   | Arrow of t * t
 
-let to_string (k : t) : string =
+let rec to_string (k : t) : string =
   match k with
   | Set -> "Set"
   | Tag -> "vtag"
-  | _ -> ""
+  | Arrow (k1, k2) -> (to_string k1) ^ " -> " ^ (to_string k2)
 
 let to_coq (k : t) : SmartPrint.t =
   !^ (to_string k)
@@ -21,3 +21,9 @@ let union k1 k2 : t =
   | _, Arrow _ -> k2
   | Set, t | t, Set -> t
   | t, _ -> t
+
+let rec set_arrows (arity : int) : t =
+  if arity = 0 then
+    Set
+  else
+    Arrow (Set, set_arrows (arity - 1))
