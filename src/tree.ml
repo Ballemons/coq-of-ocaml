@@ -1,4 +1,5 @@
 open SmartPrint
+open Monad.Notations
 
 type 'a item =
   | Item of Name.t * 'a
@@ -12,6 +13,17 @@ let rec map (f : 'a -> 'b) (tree : 'a t) : 'b t =
     | Item (name, x) -> Item (name, f x)
     | Module (name, tree) -> Module (name, map f tree) in
   tree |> List.map map_item
+
+let rec monad_map (f : 'a -> 'b Monad.t) (tree : 'a t) : 'b t Monad.t =
+  let map_item (item : 'a item) : 'b item Monad.t =
+    match item with
+    | Item (name, x) ->
+      let* x = f x in
+      return @@ Item (name, x)
+    | Module (name, tree) ->
+      let* tree = monad_map f tree in
+      return @@ Module (name, tree) in
+  tree |> Monad.List.map map_item
 
 let rec map_at (tree : 'a t) (path_name : PathName.t) (f : 'a -> 'a) : 'a t =
   let (head, tail) = PathName.get_head_and_tail path_name in

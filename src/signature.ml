@@ -27,6 +27,7 @@ let items_of_types_signature
     | Sig_value (ident, { val_type; _ }, _) ->
       let* name = Name.of_ident true ident in
       Type.of_typ_expr true Name.Map.empty val_type >>= fun (typ, _, new_typ_vars) ->
+      let* typ = Type.decode_var_tags new_typ_vars None false false typ in
       let keys = List.map fst typ_params in
       let typ_args = VarEnv.remove_many keys new_typ_vars in
       return (Value (name, typ_args, typ), new_typ_vars)
@@ -37,6 +38,7 @@ let items_of_types_signature
     | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
       let* name = Name.of_ident false ident in
       Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
+      let* typ = Type.decode_var_tags new_typ_vars None false false typ in
       let keys = List.map fst typ_params in
       let typ_args = VarEnv.remove_many keys new_typ_vars in
       return (TypSynonym (name, typ_args, typ), new_typ_vars)
@@ -180,6 +182,7 @@ let items_of_signature
         } ] ->
         let* name = Name.of_ident false typ_id in
         Type.of_typ_expr true Name.Map.empty typ >>= fun (typ, _, new_typ_vars) ->
+        let* typ = Type.decode_var_tags new_typ_vars None false false typ in
         let keys = List.map fst typ_params in
         let typ_args = VarEnv.remove_many keys new_typ_vars in
         return ([TypSynonym (name, typ_args, typ)], new_typ_vars)
@@ -197,6 +200,7 @@ let items_of_signature
     | Tsig_value { val_id; val_desc = { ctyp_type; _ }; _ } ->
       let* name = Name.of_ident true val_id in
       Type.of_typ_expr true Name.Map.empty ctyp_type >>= fun (typ, _, new_typ_vars) ->
+      let* typ = Type.decode_var_tags new_typ_vars None false false typ in
       let keys = List.map fst typ_params in
       let typ_args = VarEnv.remove_many keys new_typ_vars in
       return ([Value (name, typ_args, typ)], new_typ_vars))) in
@@ -206,11 +210,51 @@ let items_of_signature
     ) ([], []) in
   return (List.rev items, varenv)
 
+
+      (* let* module_typ = match module_typ with
+       *   | With (name, typs) ->
+       *     let* typs = Tree.monad_map (fun typ_or_arity ->
+       *         match typ_or_arity with
+       *         | Type.Arity _ -> return typ_or_arity
+       *         | Type.Typ typ ->
+       *           let* typ = Type.decode_var_tags typ_params None false false typ in
+       *           return @@ Type.Typ typ
+       *       ) typs in
+       *     return (ModuleTyp.With (name, typs))
+       *   | _ -> return module_typ
+       * in *)
+
+let decode_items
+    (varenv : VarEnv.t)
+    (items : item list)
+  : item list Monad.t =
+  items |> Monad.List.map (fun i ->
+      match i with
+      | TypSynonym (name, typ_params, typ) ->
+        let* typ = Type.decode_var_tags varenv None false false typ in
+        return @@ TypSynonym (name, typ_params, typ)
+      | Value (name, typ_params, typ) ->
+        let* typ = Type.decode_var_tags varenv None false false typ in
+        return @@ Value (name, typ_params, typ)
+      | Module (name, module_typ) ->
+        let* module_typ = module_typ |> ModuleTyp.monad_map (fun ar_or_typ ->
+            match ar_or_typ with
+            | Type.Typ typ ->
+              let* typ = Type.decode_var_tags varenv None false false typ in
+              return @@ Type.Typ typ
+            | _ -> return ar_or_typ
+          ) in
+        return @@ Module (name, module_typ)
+      | _ -> return i
+    )
+
+
 let of_signature (signature : signature) : t Monad.t =
   push_env (
   let* typ_params = ModuleTypParams.get_signature_typ_params_kind signature.sig_type in
   let varenv = ModuleTypParams.build_varenv typ_params in
-  items_of_signature varenv signature >>= fun (items, varenv) ->
+  let* (items, varenv) = items_of_signature varenv signature in
+  let* items = decode_items varenv items in
   let typ_params = Tree.update_items varenv typ_params in
 
   return { items; typ_params })

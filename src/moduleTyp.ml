@@ -6,6 +6,17 @@ type t =
   | Functor of Name.t * t * t
   | With of PathName.t * Type.arity_or_typ Tree.t
 
+let rec monad_map (f : Type.arity_or_typ -> Type.arity_or_typ Monad.t) (modtyp : t) : t Monad.t =
+  match modtyp with
+  | Functor (name, t1, t2) ->
+    let* t1 = monad_map f t1 in
+    let* t2 = monad_map f t2 in
+    return @@ Functor (name, t1, t2)
+  | With (name, typ_or_arity) ->
+    let* typ_or_arity = Tree.monad_map f typ_or_arity in
+    return @@ With (name, typ_or_arity)
+  | Error _ -> return modtyp
+
 let rec get_module_typ_desc_path
   (module_typ_desc : Typedtree.module_type_desc) : Path.t option =
   match module_typ_desc with
