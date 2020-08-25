@@ -70,6 +70,19 @@ let rec find_item (key : Name.t) (tree : 'a t) : 'a option =
   | Module (name, k) :: tree ->
     find_item key tree
 
+(* Updates the first Item found in tree *)
+let rec update_item (key : Name.t) (item : 'a) (tree : 'a t) : 'a t =
+  match tree with
+  | [] -> []
+  | Module (name, k) :: tree -> update_item key item tree
+  | Item (name, k) :: tree ->
+    if name = key
+    then Item (name, item) :: tree
+    else Item (name, k) :: update_item key item tree
+
+let update_items (l : (Name.t * 'a) list) (tree : 'a t) : 'a t =
+  List.fold_left (fun acc (key, item) -> update_item key item acc) tree l
+
 let rec remove_item (key : Name.t) (tree : 'a t) : 'a t =
   match tree with
   | [] -> []
