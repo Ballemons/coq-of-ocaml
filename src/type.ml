@@ -103,12 +103,42 @@ let is_type_abstract
   | { type_kind = Type_abstract; _ } -> return @@ true
   | _ | exception _ -> return false
 
+let is_type_private
+    (path : Path.t)
+  : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_private = Private; _ } -> return @@ true
+  | _ | exception _ -> return false
+
+let type_scope
+    (path : Path.t)
+  : int Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_expansion_scope; _ } -> return @@ type_expansion_scope
+
+let type_immediate
+    (path : Path.t)
+  : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_immediate; _ } -> return @@ type_immediate
+
 let is_new_type
     (path : Path.t)
   : bool Monad.t =
   let* env = get_env in
   match Env.find_type path env with
   | { type_is_newtype = true; _ } -> return @@ true
+  | _ | exception _ -> return false
+
+let has_type_manifest
+    (path : Path.t)
+  : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_manifest = Some _; _ } -> return @@ true
   | _ | exception _ -> return false
 
 let is_type_variant (t : Types.type_expr) : bool Monad.t =
@@ -177,11 +207,10 @@ let rec of_typ_expr_in_constr
   | Tconstr (path, typs, abbr) ->
     let* mixed_path = MixedPath.of_path false path None in
     let* is_abstract = is_type_abstract path in
-    let* is_new_type = is_new_type path in
+    let native_type = List.mem (MixedPath.to_string mixed_path) Name.native_types in
     (* For unknown reasons a type variable becomes a Tconstr some times (see type of patterns)
        This `if` is to try to figure out if such constructor was supposed to be a variable *)
-    if is_abstract && List.length typs = 0
-    (* if is_abstract && is_new_type && List.length typs = 0 *)
+    if is_abstract && not native_type && List.length typs = 0
     then
       (
         let var_name = (Name.of_last_path path) in
