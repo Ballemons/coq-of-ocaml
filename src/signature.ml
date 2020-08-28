@@ -210,20 +210,6 @@ let items_of_signature
     ) ([], []) in
   return (List.rev items, varenv)
 
-
-      (* let* module_typ = match module_typ with
-       *   | With (name, typs) ->
-       *     let* typs = Tree.monad_map (fun typ_or_arity ->
-       *         match typ_or_arity with
-       *         | Type.Arity _ -> return typ_or_arity
-       *         | Type.Typ typ ->
-       *           let* typ = Type.decode_var_tags typ_params None false false typ in
-       *           return @@ Type.Typ typ
-       *       ) typs in
-       *     return (ModuleTyp.With (name, typs))
-       *   | _ -> return module_typ
-       * in *)
-
 let decode_items
     (varenv : VarEnv.t)
     (items : item list)
@@ -248,7 +234,6 @@ let decode_items
       | _ -> return i
     )
 
-
 let of_signature (signature : signature) : t Monad.t =
   push_env (
   let* typ_params = ModuleTypParams.get_signature_typ_params_kind signature.sig_type in
@@ -256,7 +241,6 @@ let of_signature (signature : signature) : t Monad.t =
   let* (items, varenv) = items_of_signature varenv signature in
   let* items = decode_items varenv items in
   let typ_params = Tree.update_items varenv typ_params in
-
   return { items; typ_params })
 
 let to_coq_item (signature_item : item) : SmartPrint.t =

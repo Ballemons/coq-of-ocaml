@@ -133,6 +133,14 @@ let is_new_type
   | { type_is_newtype = true; _ } -> return @@ true
   | _ | exception _ -> return false
 
+let print_type
+    (path : Path.t)
+  : unit Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | typ -> return @@ Printtyp.type_declaration (Ident.create_local "a") Format.std_formatter  typ
+  | exception _ -> return ()
+
 let has_type_manifest
     (path : Path.t)
   : bool Monad.t =
@@ -147,6 +155,7 @@ let is_type_variant (t : Types.type_expr) : bool Monad.t =
     let* is_variant = PathName.is_variant_declaration path in
     return @@ Option.is_some is_variant
   | _ -> return false
+
 
 (** This function is utilized for building dependent pattern matching,
     if typ is a type constructor then it will return a list of equations
@@ -208,12 +217,15 @@ let rec of_typ_expr_in_constr
     let* mixed_path = MixedPath.of_path false path None in
     let* is_abstract = is_type_abstract path in
     let native_type = List.mem (MixedPath.to_string mixed_path) Name.native_types in
+    let is_pident = match path with
+      | Path.Pident _ -> true
+      | _ -> false in
+
     (* For unknown reasons a type variable becomes a Tconstr some times (see type of patterns)
        This `if` is to try to figure out if such constructor was supposed to be a variable *)
-    if is_abstract && not native_type && List.length typs = 0
+    if is_abstract && not native_type && is_pident && List.length typs = 0
     then
-      (
-        let var_name = (Name.of_last_path path) in
+      ( let var_name = (Name.of_last_path path) in
         let var = Variable var_name in
         let* new_typ_vars =
             if should_tag
@@ -235,6 +247,7 @@ let rec of_typ_expr_in_constr
       let tag_list = tag_list should_tag typs in
       of_typs_exprs_constr tag_list with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
       MixedPath.of_path false path None >>= fun mixed_path ->
+      print_string "access\n";
       return (Apply (mixed_path, typs, tag_list), typ_vars, new_typ_vars)
     | _ ->
       raise
