@@ -261,12 +261,6 @@ let to_coq_item (signature_item : item) : SmartPrint.t =
       Type.typ_vars_to_coq braces (!^ "forall") (!^ ",") typ_args)
     ^^ Type.to_coq None None typ ^-^ !^ ";"
 
-let rec to_coq_type_kind (arity : int) : SmartPrint.t =
-  if arity = 0 then
-    Pp.set
-  else
-    Pp.set ^^ !^ "->" ^^ to_coq_type_kind (arity - 1)
-
 let to_coq_definition (name : Name.t) (signature : t) : SmartPrint.t =
   let typ_params : (SmartPrint.t * Kind.t) list =
     Tree.flatten signature.typ_params |> List.map (fun (path_name, kind) ->
