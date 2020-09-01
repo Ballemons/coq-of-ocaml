@@ -75,6 +75,8 @@ let native_types = [
   "string";
   "bool";
   "float";
+  (* "char"; *)
+  "ascii";
 ]
 
 (** We only escape these names if they are used as values, as they may collide
