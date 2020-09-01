@@ -50,7 +50,7 @@ type t =
   | Apply of t * t list (** An application. *)
   | Function of Name.t * t (** An argument name and a body. *)
   | Functions of Name.t list * t (** Argument names and a body. *)
-  | LetVar of string option * Name.t * Name.t list * t * t
+  | LetVar of string option * Name.t * VarEnv.t * t * t
     (** The let of a variable, with optionally a list of polymorphic variables.
         We optionally specify the symbol of the let operator as it may be
         non-standard for monadic binds. *)
@@ -1070,7 +1070,7 @@ and of_include
       begin match signature_item with
       | Sig_value (_, { Types.val_type; _ }, _) ->
         Type.of_typ_expr true typ_vars val_type >>= fun (_, _, new_typ_vars) ->
-        let new_typ_vars = new_typ_vars |> List.map fst in
+        let new_typ_vars = new_typ_vars in
         return new_typ_vars
       | _ -> return []
       end >>= fun typ_vars ->
@@ -1186,14 +1186,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
     let get_default () =
       Pp.parens paren @@ nest (
         to_coq_let_symbol let_symbol ^^ Name.to_coq x ^^
-        begin match typ_params with
-        | [] -> empty
-        | _ :: _ ->
-          braces (nest (
-            separate space (typ_params |> List.map Name.to_coq) ^^
-            !^ ":" ^^ !^ "Set"
-          ))
-        end ^^
+        Type.typ_vars_to_coq braces empty empty typ_params ^^
         !^ ":=" ^^ to_coq false e1 ^^ !^ "in" ^^ newline ^^ to_coq false e2
       ) in
     begin match (let_symbol, x, e1, e2) with

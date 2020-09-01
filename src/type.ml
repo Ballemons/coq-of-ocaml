@@ -101,7 +101,10 @@ let is_type_abstract
   let* env = get_env in
   match Env.find_type path env with
   | { type_kind = Type_abstract; _ } -> return @@ true
-  | _ | exception _ -> return false
+  | _ | exception _ ->
+    print_string "(path ";
+    print_string (Path.name path);
+    print_string " not found) "; return false
 
 let is_type_private
     (path : Path.t)
@@ -170,7 +173,6 @@ let normalize_constructor (typ : t) : t * t list =
     (Apply (t, args, bs), eqs)
   | _ -> (typ, [])
 
-
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
 let rec of_typ_expr_in_constr
   (should_tag : bool)
@@ -236,6 +238,8 @@ let rec of_typ_expr_in_constr
     )
     else
       begin
+        print_string (MixedPath.to_string mixed_path);
+        print_string " ";
         let* tag_list = get_constr_arg_tags path in
         let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr tag_list with_free_vars typ_vars typs in
         let* typs = tag_typ_constr path typs in
@@ -307,10 +311,13 @@ let rec of_typ_expr_in_constr
   | Tpackage (path, idents, typs) ->
       let* path_name = PathName.of_path_without_convert false path in
       let typ_substitutions = List.map2 (fun ident typ -> (ident, typ)) idents typs in
+      let* new_typ_vars = new_vars_of_module path in
+      print_string (VarEnv.to_string new_typ_vars);
       Monad.List.fold_left
         (fun (typ_substitutions, typ_vars, new_typ_vars) (ident, typ) ->
           let* path_name = PathName.of_long_ident false ident in
-          of_typ_expr_in_constr should_tag with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') ->
+          (* of_typ_expr_in_constr should_tag with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') -> *)
+          of_typ_expr_in_constr true with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') ->
           let new_typ_vars = VarEnv.union new_typ_vars new_typ_vars' in
           return (
             (path_name, typ) :: typ_substitutions,
@@ -330,6 +337,7 @@ let rec of_typ_expr_in_constr
         )
         (signature_typ_params |> Tree.map (fun arity -> Arity arity))
         typ_substitutions in
+      (* let module_typ_kinds = ModuleTypParams.get_module_typ_declaration_typ_ *)
       return (Package (true, path_name, typ_params), typ_vars, new_typ_vars)
 
 and tag_typ_constr
@@ -394,6 +402,54 @@ and get_constr_arg_tags
 
       | _ | exception _ -> return []
     end
+
+and new_vars_of_signature
+    (signature : Types.signature_item)
+  : VarEnv.t Monad.t =
+  match signature with
+  | Sig_value (_, { val_type; _ }, _) ->
+    print_string "value: ";
+    Printtyp.type_expr Format.std_formatter val_type;
+    of_typ_expr_in_constr true true Name.Map.empty val_type >>= fun (typ, _, new_typ_vars) ->
+    (match typ with
+     | Apply (mpath, typs, _) ->
+       begin
+         (* print_string (MixedPath.to_string mpath); *)
+         print_string " ";
+         (* match List.hd typs with *)
+         (* | Variable a  -> print_string (Name.to_string a); *)
+         (* | Apply (mpath, _, _) -> print_string (MixedPath.to_string mpath); *)
+         (* | _ -> print_string "." *)
+       end
+     | _ -> print_string "";
+    );
+    print_string "\n -- " ;
+    print_string (VarEnv.to_string new_typ_vars);
+    print_string "\n" ;
+    return new_typ_vars
+  | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
+    of_typ_expr_in_constr false true Name.Map.empty typ >>= fun (_, _, new_typ_vars) ->
+    return new_typ_vars
+  | _ -> return []
+
+
+and new_vars_of_module
+  (path : Path.t)
+  : VarEnv.t Monad.t =
+  let* env = get_env in
+  match Env.find_modtype path env with
+  | { mtd_type = Some modtype; _ } ->
+    begin
+      match modtype with
+      | Mty_signature signature ->
+        print_string "Found sig\n";
+        signature |> Monad.List.fold_left (fun acc sig_item ->
+            let* new_vars = new_vars_of_signature sig_item in
+            let acc = VarEnv.union acc new_vars in
+            return acc) []
+      | _ -> return []
+    end
+  | _ | exception Not_found -> return []
 
 let rec decode_var_tags
     (typ_vars : VarEnv.t)
@@ -545,7 +601,7 @@ let rec typ_args_of_typ (typ : t) : Name.Set.t =
   | Sum typs -> typ_args_of_typs (List.map snd typs)
   | Tuple typs -> typ_args_of_typs typs
   | Apply (mpath, typs, _) ->
-    print_string (MixedPath.to_string mpath ^ "\n");
+    (* print_string (MixedPath.to_string mpath ^ "\n"); *)
     typ_args_of_typs typs
   | Package (_, _, typ_params) ->
     Tree.flatten typ_params |>
