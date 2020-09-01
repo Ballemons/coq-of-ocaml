@@ -68,7 +68,7 @@ let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
     !^ "Local Open Scope Z_scope.";
     !^ "Local Open Scope type_scope.";
     !^ "Import ListNotations.";
-    !^ "Import EqNotations.";
+    (* !^ "Import EqNotations."; *)
   ]) ^^
   begin if ast.without_guard_checking then
     !^ "Unset Guard Checking." ^^ newline

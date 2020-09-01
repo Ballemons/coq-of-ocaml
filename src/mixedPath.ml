@@ -31,6 +31,11 @@ let is_tag (path : t) : bool =
     then true
     else false
 
+let is_native_type (path : t) : bool =
+  match path with
+  | Access _ -> false
+  | PathName ({ base; _ }, _) -> List.mem (Name.to_string base) Name.native_type_constructors
+
 let to_string : t -> string = function
   | Access (path, fields, _, _) ->
     let fields = List.map PathName.to_string fields in

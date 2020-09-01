@@ -117,6 +117,7 @@ let items_of_types_signature
   return (List.rev items, varenv)
 
 let items_of_signature
+    (* typ_params are the type variables of a synonym *)
     (typ_params : VarEnv.t)
     (signature : signature)
   : (item list * VarEnv.t) Monad.t =
@@ -203,6 +204,7 @@ let items_of_signature
       let* typ = Type.decode_var_tags new_typ_vars None false false typ in
       let keys = List.map fst typ_params in
       let typ_args = VarEnv.remove_many keys new_typ_vars in
+
       return ([Value (name, typ_args, typ)], new_typ_vars))) in
   let* (items, varenv) = signature.sig_items |> Monad.List.fold_left (fun (acc_items, acc_varenv) item ->
       let* (items, varenv) = of_signature_item typ_params item in

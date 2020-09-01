@@ -102,9 +102,7 @@ let is_type_abstract
   match Env.find_type path env with
   | { type_kind = Type_abstract; _ } -> return @@ true
   | _ | exception _ ->
-    print_string "(path ";
-    print_string (Path.name path);
-    print_string " not found) "; return false
+    return false
 
 let is_type_private
     (path : Path.t)
@@ -135,6 +133,15 @@ let is_new_type
   match Env.find_type path env with
   | { type_is_newtype = true; _ } -> return @@ true
   | _ | exception _ -> return false
+
+let is_native_type
+    (typ : t)
+  : bool =
+  match typ with
+  | Variable var -> List.mem (Name.to_string var) Name.native_types
+  | Apply (mpath, _, _) -> MixedPath.is_native_type mpath
+  | _ -> false
+
 
 let print_type
     (path : Path.t)
@@ -215,7 +222,7 @@ let rec of_typ_expr_in_constr
     let tag_list = tag_list should_tag typs in
     of_typs_exprs_constr tag_list with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
     return (Tuple typs, typ_vars, new_typ_vars)
-  | Tconstr (path, typs, abbr) ->
+  | Tconstr (path, typs, _) ->
     let* mixed_path = MixedPath.of_path false path None in
     let* is_abstract = is_type_abstract path in
     let native_type = List.mem (MixedPath.to_string mixed_path) Name.native_types in
@@ -238,8 +245,6 @@ let rec of_typ_expr_in_constr
     )
     else
       begin
-        print_string (MixedPath.to_string mixed_path);
-        print_string " ";
         let* tag_list = get_constr_arg_tags path in
         let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr tag_list with_free_vars typ_vars typs in
         let* typs = tag_typ_constr path typs in
@@ -251,7 +256,6 @@ let rec of_typ_expr_in_constr
       let tag_list = tag_list should_tag typs in
       of_typs_exprs_constr tag_list with_free_vars typ_vars typs >>= fun (typs, typ_vars, new_typ_vars) ->
       MixedPath.of_path false path None >>= fun mixed_path ->
-      print_string "access\n";
       return (Apply (mixed_path, typs, tag_list), typ_vars, new_typ_vars)
     | _ ->
       raise
@@ -312,7 +316,6 @@ let rec of_typ_expr_in_constr
       let* path_name = PathName.of_path_without_convert false path in
       let typ_substitutions = List.map2 (fun ident typ -> (ident, typ)) idents typs in
       let* new_typ_vars = new_vars_of_module path in
-      print_string (VarEnv.to_string new_typ_vars);
       Monad.List.fold_left
         (fun (typ_substitutions, typ_vars, new_typ_vars) (ident, typ) ->
           let* path_name = PathName.of_long_ident false ident in
@@ -408,7 +411,6 @@ and new_vars_of_signature
   : VarEnv.t Monad.t =
   match signature with
   | Sig_value (_, { val_type; _ }, _) ->
-    print_string "value: ";
     Printtyp.type_expr Format.std_formatter val_type;
     of_typ_expr_in_constr true true Name.Map.empty val_type >>= fun (typ, _, new_typ_vars) ->
     (match typ with
@@ -444,8 +446,9 @@ and new_vars_of_module
       | Mty_signature signature ->
         print_string "Found sig\n";
         signature |> Monad.List.fold_left (fun acc sig_item ->
-            let* new_vars = new_vars_of_signature sig_item in
-            let acc = VarEnv.union acc new_vars in
+            (* let* new_vars = new_vars_of_signature sig_item in *)
+            (* let acc = VarEnv.union acc new_vars in *)
+            let acc = VarEnv.union acc [] in
             return acc) []
       | _ -> return []
     end
@@ -593,7 +596,6 @@ let rec typ_args_of_typ (typ : t) : Name.Set.t =
   match typ with
   | String x -> Name.Set.empty
   | Variable x ->
-    (* print_string (Name.to_string x); print_string "\n"; *)
     Name.Set.singleton x
   | Kind _ -> Name.Set.empty
   | Arrow (typ1, typ2) -> typ_args_of_typs [typ1; typ2]
@@ -601,7 +603,6 @@ let rec typ_args_of_typ (typ : t) : Name.Set.t =
   | Sum typs -> typ_args_of_typs (List.map snd typs)
   | Tuple typs -> typ_args_of_typs typs
   | Apply (mpath, typs, _) ->
-    (* print_string (MixedPath.to_string mpath ^ "\n"); *)
     typ_args_of_typs typs
   | Package (_, _, typ_params) ->
     Tree.flatten typ_params |>

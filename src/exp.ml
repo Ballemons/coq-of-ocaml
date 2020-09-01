@@ -230,7 +230,8 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
       let name = PathName.to_string path_name in
       begin match Configuration.is_monadic_operator configuration name with
       | None -> return normal_apply
-      | Some let_symbol -> return (LetVar (Some let_symbol, x, [], e1, e2))
+      | Some let_symbol ->
+        return (LetVar (Some let_symbol, x, [], e1, e2))
       end
     | _ -> return normal_apply
     end
@@ -461,7 +462,7 @@ and of_match
       let* motive = Type.decode_var_tags new_typ_vars None false false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
-      if List.length args = 0
+      if List.length args = 0 || (Type.is_native_type motive)
       then return None
       else return (Some ({cast; args; motive}))
     end
@@ -607,7 +608,6 @@ and import_let_fun
       let (args_names, e_body) = open_function e in
       let* e_typ = Type.decode_var_tags new_typ_vars None false false e_typ in
       let (args_typs, e_body_typ) = Type.open_type e_typ (List.length args_names) in
-      (* let args_typs = List.map (Tags.tag_type) args_typs in *)
       get_configuration >>= fun configuration ->
       let structs =
         match struct_attributes with
@@ -681,7 +681,8 @@ and of_let
       let* e1 = of_expression typ_vars e1 in
       let dep_match = { cast = p_typ; args = []; motive = e1_typ } in
       begin match p with
-      | Some (Pattern.Variable x) -> return (LetVar (None, x, [], e1, e2))
+        | Some (Pattern.Variable x) ->
+          return (LetVar (None, x, [], e1, e2))
       | Some p -> return (Match (e1, Some dep_match, [p, None, e2], false))
       | None -> return (Match (e1, Some dep_match, [], false))
       end
