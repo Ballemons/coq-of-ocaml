@@ -203,6 +203,8 @@ let rec of_typ_expr_in_constr
     let typ = if should_tag
       then Kind.Tag
       else Kind.Set in
+    print_string (Name.to_string generated_name);
+    print_string " ";
     let (typ_vars, new_typ_vars, name) =
       if Name.Map.mem source_name typ_vars
       then
@@ -381,6 +383,7 @@ and of_typs_exprs_constr
 and get_constr_arg_tags
     (path : Path.t)
     : bool list Monad.t =
+  (* TODO: Simplify this to have a single match *)
   let* is_variant = PathName.is_variant_declaration path in
   match is_variant with
   | Some (decls, params) ->
@@ -392,6 +395,8 @@ and get_constr_arg_tags
     (* Get the Type declaration of synonyms *)
     let* env = get_env in
     begin match Env.find_type path env with
+      | { type_manifest = None; type_kind = Type_abstract; type_params = params; _ } ->
+        return (List.map (fun _ -> false) params)
       | { type_manifest = Some typ; type_params = params; _ } ->
         let* (typ, typ_vars, new_typ_vars) = of_typ_expr_in_constr false true Name.Map.empty typ in
         return @@ List.map (fun (_, kind) ->
@@ -400,8 +405,6 @@ and get_constr_arg_tags
             | _ -> false
           ) new_typ_vars
       (* TODO: Preserve order of type parameters *)
-      (* return [] *)
-
       | _ | exception _ -> return []
     end
 
