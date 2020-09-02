@@ -462,7 +462,7 @@ and of_match
       let* motive = Type.decode_var_tags new_typ_vars None false false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
-      if List.length args = 0 || (Type.is_native_type motive)
+      if List.length args = 0 || (Type.is_native_type cast)
       then return None
       else return (Some ({cast; args; motive}))
     end
