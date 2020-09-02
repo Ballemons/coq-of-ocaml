@@ -203,8 +203,6 @@ let rec of_typ_expr_in_constr
     let typ = if should_tag
       then Kind.Tag
       else Kind.Set in
-    print_string (Name.to_string generated_name);
-    print_string " ";
     let (typ_vars, new_typ_vars, name) =
       if Name.Map.mem source_name typ_vars
       then
@@ -446,7 +444,6 @@ and new_vars_of_module
     begin
       match modtype with
       | Mty_signature signature ->
-        print_string "Found sig\n";
         signature |> Monad.List.fold_left (fun acc sig_item ->
             (* let* new_vars = new_vars_of_signature sig_item in *)
             (* let acc = VarEnv.union acc new_vars in *)
