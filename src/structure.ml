@@ -159,6 +159,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
     | Tstr_eval _ -> top_level_evaluation_error
     | Tstr_value (is_rec, cases) ->
       push_env (
+        print_string "struct letfun\n";
       Exp.import_let_fun Name.Map.empty true is_rec cases >>= fun def ->
       return [Value def])
     | Tstr_type (_, typs) ->

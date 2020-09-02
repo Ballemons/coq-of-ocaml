@@ -183,6 +183,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     return (Constant constant)
   | Texp_let (is_rec, cases, e2) ->
     of_expression typ_vars e2 >>= fun e2 ->
+    print_string "of_expression Texp_let\n";
     of_let typ_vars is_rec cases e2
   | Texp_function {
       cases = [{
@@ -600,11 +601,20 @@ and import_let_fun
     | _ ->
       raise None Unexpected "A variable name instead of a pattern was expected."
     ) >>= fun name ->
-    Type.of_typ_expr true typ_vars vb_expr.exp_type >>= fun (e_typ, typ_vars, new_typ_vars) ->
+    Type.of_typ_expr true typ_vars vb_expr.exp_type >>= fun (e_typ, typ_vars', new_typ_vars) ->
+    let typ_vars = (Name.Map.bindings typ_vars) in
+    (* print_string "Typ_vars: [ "; *)
+    (* let _ = List.map (fun (_, x) -> print_string (Name.to_string x ^ ", ")) typ_vars in *)
+    (* print_string " ]\n"; *)
+    let typ_vars = List.map snd typ_vars in
+    (* print_string "New_typ_vars: "; *)
+    (* print_string (VarEnv.to_string new_typ_vars); *)
+    (* print_string "\n"; *)
+    let new_typ_vars = VarEnv.remove_many typ_vars new_typ_vars in
     match name with
     | None -> return None
     | Some name ->
-      of_expression typ_vars vb_expr >>= fun e ->
+      of_expression typ_vars' vb_expr >>= fun e ->
       let (args_names, e_body) = open_function e in
       let* e_typ = Type.decode_var_tags new_typ_vars None false false e_typ in
       let (args_typs, e_body_typ) = Type.open_type e_typ (List.length args_names) in
@@ -946,6 +956,7 @@ and of_structure
           SideEffect
           "Top-level evaluations are ignored"
       | Tstr_value (rec_flag, cases) ->
+        print_string "of_exp of_let\n";
         push_env (of_let typ_vars rec_flag cases e_next)
       | Tstr_primitive _ ->
         raise
@@ -1236,17 +1247,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         ) else
           !^ "with") ^^
         Name.to_coq header.Header.name ^^
-        Type.typ_vars_to_coq braces empty empty header.Header.typ_vars
-        (* (if header.Header.typ_vars = Name.Map.empty *)
-        (* then empty *)
-        (* else *)
-          (* braces @@ group ( *)
-            (* let typ_vars = Type.group_by_type header.Header.typ_vars |> Type.Map.bindings in *)
-          (* separate space (List.map (fun n -> Name.to_coq @@ fst n) header.Header.typ_vars) ^^ *)
-          (* !^ ":" ^^ Pp.set)) *)
-
-        ^^
-
+        Type.typ_vars_to_coq braces empty empty header.Header.typ_vars ^^
         group (separate space (header.Header.args |> List.map (fun (x, x_typ) ->
           parens (nest (
             Name.to_coq x ^^ !^ ":" ^^ Type.to_coq None None x_typ

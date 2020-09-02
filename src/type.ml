@@ -203,15 +203,14 @@ let rec of_typ_expr_in_constr
     let typ = if should_tag
       then Kind.Tag
       else Kind.Set in
-    let new_typ_vars = [(generated_name, typ)] in
-    let (typ_vars, name) =
+    let (typ_vars, new_typ_vars, name) =
       if Name.Map.mem source_name typ_vars
       then
         let name = Name.Map.find source_name typ_vars in
-        (typ_vars, name)
+        (typ_vars, [], name)
       else
         let typ_vars = Name.Map.add source_name generated_name typ_vars in
-        (typ_vars, generated_name) in
+        (typ_vars, [(generated_name, typ)], generated_name) in
     return (Variable name, typ_vars, new_typ_vars)
   | Tarrow (_, typ_x, typ_y, _) ->
     of_typ_expr_in_constr should_tag with_free_vars typ_vars typ_x >>= fun (typ_x, typ_vars, new_typ_vars_x) ->
