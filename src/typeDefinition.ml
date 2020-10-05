@@ -266,8 +266,6 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
 
     let fields = List.combine names typs |> List.rev in
     let typ_args = VarEnv.merge new_typs_vars in
-    print_string (VarEnv.to_string typ_args);
-    print_string "\n";
     let* fields = fields |> Monad.List.map (fun (x, typ) ->
         let* typ = Type.decode_var_tags typ_args None false false typ in
         return (x, typ)) in

@@ -416,8 +416,6 @@ and new_vars_of_signature
     (match typ with
      | Apply (mpath, typs, _) ->
        begin
-         (* print_string (MixedPath.to_string mpath); *)
-         print_string " ";
          (* match List.hd typs with *)
          (* | Variable a  -> print_string (Name.to_string a); *)
          (* | Apply (mpath, _, _) -> print_string (MixedPath.to_string mpath); *)
@@ -425,9 +423,6 @@ and new_vars_of_signature
        end
      | _ -> print_string "";
     );
-    print_string "\n -- " ;
-    print_string (VarEnv.to_string new_typ_vars);
-    print_string "\n" ;
     return new_typ_vars
   | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
     of_typ_expr_in_constr false true Name.Map.empty typ >>= fun (_, _, new_typ_vars) ->
