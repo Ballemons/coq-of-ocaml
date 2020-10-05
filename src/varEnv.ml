@@ -30,6 +30,14 @@ let merge (env : t list) : t =
   | [] -> []
   | x :: xs -> List.fold_left (fun acc y -> union acc y) x xs
 
+let reorg (names : Name.t list) (env : t): t =
+  List.fold_left (fun acc name ->
+      match List.assoc_opt name env with
+      | None -> acc
+      | Some kind -> (name, kind) :: acc
+    ) [] names
+  |> List.rev
+
 let rec group_by_kind_aux
     (m : t)
     (kind : Kind.t)

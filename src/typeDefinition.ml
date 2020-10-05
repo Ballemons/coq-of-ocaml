@@ -254,7 +254,8 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
     return (Abstract (name, typ_args_with_unknowns))
   | [ { typ_id; typ_type = { type_kind = Type_record (fields, _); type_params; _ }; _ } ] ->
     let* name = Name.of_ident false typ_id in
-    let* fields_typ_vars : (Name.t * Type.t * VarEnv.t) list = fields |> Monad.List.map (fun { Types.ld_id = x; ld_type = typ; _ } ->
+    let* fields_typ_vars : (Name.t * Type.t * VarEnv.t) list =
+      fields |> Monad.List.map (fun { Types.ld_id = x; ld_type = typ; _ } ->
         let* x = Name.of_ident false x in
         let* (typ, typ_vars, new_typ_vars) = Type.of_typ_expr false Name.Map.empty typ in
         return (x, typ, new_typ_vars)
@@ -265,7 +266,9 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
         fields_typ_vars in
 
     let fields = List.combine names typs |> List.rev in
-    let typ_args = VarEnv.merge new_typs_vars in
+    let* type_params = AdtParameters.of_ocaml type_params in
+    let type_params = AdtParameters.get_parameters type_params in
+    let typ_args = VarEnv.merge new_typs_vars |> VarEnv.reorg type_params in
     let* fields = fields |> Monad.List.map (fun (x, typ) ->
         let* typ = Type.decode_var_tags typ_args None false false typ in
         return (x, typ)) in
