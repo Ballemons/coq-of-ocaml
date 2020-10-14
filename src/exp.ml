@@ -688,6 +688,7 @@ and of_let
       end
     | _ ->
       import_let_fun typ_vars false is_rec cases >>= fun def ->
+      print_string "LetFun!\n";
       return (LetFun (def, e2))
     end
 
@@ -969,6 +970,7 @@ and of_structure
             let* name = Name.of_ident false typ_id in
             (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args ->
             Type.of_type_expr_without_free_vars typ >>= fun typ ->
+            print_string "Here!\n";
             return (LetTyp (name, typ_args, typ, e_next))
           | _ ->
             raise

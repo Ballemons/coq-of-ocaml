@@ -382,29 +382,30 @@ and get_constr_arg_tags
     (path : Path.t)
     : bool list Monad.t =
   (* TODO: Simplify this to have a single match *)
-  let* is_variant = PathName.is_variant_declaration path in
-  match is_variant with
-  | Some (decls, params) ->
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_kind = Type_variant constructors; type_params = params; _ } ->
     let name = Path.last path in
     if List.mem name Name.native_type_constructors
     then return @@ tag_no_args params
     else return @@ tag_all_args params
-  | None ->
-    (* Get the Type declaration of synonyms *)
-    let* env = get_env in
-    begin match Env.find_type path env with
-      | { type_manifest = None; type_kind = Type_abstract; type_params = params; _ } ->
-        return (List.map (fun _ -> false) params)
-      | { type_manifest = Some typ; type_params = params; _ } ->
-        let* (typ, typ_vars, new_typ_vars) = of_typ_expr_in_constr false true Name.Map.empty typ in
-        return @@ List.map (fun (_, kind) ->
-            match kind with
-            | Kind.Tag -> true
-            | _ -> false
-          ) new_typ_vars
-      (* TODO: Preserve order of type parameters *)
-      | _ | exception _ -> return []
-    end
+  | { type_kind = Type_record _; type_params = params; _} ->
+    let name = Path.last path in
+    if List.mem name Name.native_type_constructors
+    then return @@ tag_no_args params
+    else return @@ tag_all_args params
+
+  | { type_manifest = None; type_kind = Type_abstract; type_params = params; _ } ->
+    return (List.map (fun _ -> false) params)
+  | { type_manifest = Some typ; type_params = params; _ } ->
+    let* (typ, typ_vars, new_typ_vars) = of_typ_expr_in_constr false true Name.Map.empty typ in
+    return @@ List.map (fun (_, kind) ->
+        match kind with
+        | Kind.Tag -> true
+        | _ -> false
+      ) new_typ_vars
+  (* TODO: Preserve order of type parameters *)
+  | _ | exception _ -> return []
 
 and new_vars_of_signature
     (signature : Types.signature_item)
