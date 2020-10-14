@@ -384,16 +384,14 @@ and get_constr_arg_tags
   (* TODO: Simplify this to have a single match *)
   let* env = get_env in
   match Env.find_type path env with
-  | { type_kind = Type_variant constructors; type_params = params; _ } ->
+  | { type_kind = Type_variant _; type_params = params; _ } ->
     let name = Path.last path in
     if List.mem name Name.native_type_constructors
     then return @@ tag_no_args params
     else return @@ tag_all_args params
   | { type_kind = Type_record _; type_params = params; _} ->
-    let name = Path.last path in
-    if List.mem name Name.native_type_constructors
-    then return @@ tag_no_args params
-    else return @@ tag_all_args params
+    (* FIXME: Recursively check if record type should be a tag *)
+    return @@ tag_no_args params
 
   | { type_manifest = None; type_kind = Type_abstract; type_params = params; _ } ->
     return (List.map (fun _ -> false) params)
