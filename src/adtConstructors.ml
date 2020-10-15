@@ -76,9 +76,10 @@ module RecordSkeleton = struct
       )
     )
 
-  let to_coq (record_skeleton : t) : SmartPrint.t =
+  let to_coq (record_skeleton : t): SmartPrint.t =
     let { fields; module_name; typ_name } = record_skeleton in
-    to_coq_record module_name typ_name (*fields*) [] (fields |>
+    let typ_args = fields |> List.map (fun arg -> (arg, Kind.Set)) in
+    to_coq_record module_name typ_name typ_args (fields |>
                                                List.map (fun field -> (field, Type.Variable field))
                                               ) true
 end
