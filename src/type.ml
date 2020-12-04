@@ -211,9 +211,6 @@ let rec of_typ_expr_in_constr
       else
         let typ_vars = Name.Map.add source_name generated_name typ_vars in
         (typ_vars, [(generated_name, typ)], generated_name) in
-    print_string @@ Name.to_string name ;
-    (if should_tag then print_string " vtag" else print_string " Set");
-    print_string "\n";
     return (Variable name, typ_vars, new_typ_vars)
   | Tarrow (_, typ_x, typ_y, _) ->
     of_typ_expr_in_constr should_tag with_free_vars typ_vars typ_x >>= fun (typ_x, typ_vars, new_typ_vars_x) ->
@@ -226,8 +223,6 @@ let rec of_typ_expr_in_constr
     return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, _) ->
     let* mixed_path = MixedPath.of_path false path None in
-    print_string (MixedPath.to_string mixed_path);
-    print_string "\n";
     let* is_abstract = is_type_abstract path in
     let native_type = List.mem (MixedPath.to_string mixed_path) Name.native_types in
     let is_pident = match path with
@@ -250,11 +245,7 @@ let rec of_typ_expr_in_constr
     else
       begin
         let* tag_list = get_constr_arg_tags path in
-        print_string "translating constr args\n";
         let* (typs, typ_vars, new_typs_vars) = of_typs_exprs_constr tag_list with_free_vars typ_vars typs in
-        print_string "Constr args new_typ_vars: ";
-        print_string @@ VarEnv.to_string new_typs_vars;
-        print_string "\n";
         let* typs = tag_typ_constr path typs in
         return (Apply (mixed_path, typs, tag_list), typ_vars, new_typs_vars)
       end
@@ -379,9 +370,6 @@ and of_typs_exprs_constr
     (Monad.List.fold_left
        (fun (typs, typ_vars, new_typ_vars) (typ, should_tag) ->
           of_typ_expr_in_constr should_tag with_free_vars typ_vars typ >>= fun (typ, typ_vars, new_typ_vars') ->
-          print_string (VarEnv.to_string new_typ_vars);
-          print_string (VarEnv.to_string new_typ_vars');
-          print_string "\n";
           let new_typ_vars = VarEnv.union new_typ_vars new_typ_vars' in
           return (typ :: typs, typ_vars, new_typ_vars)
        )
