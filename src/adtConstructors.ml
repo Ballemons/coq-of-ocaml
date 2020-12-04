@@ -117,6 +117,7 @@ module Single = struct
         PathName.map_constructor_name
           (Ident.name cd_id) (Name.to_string typ_name) in
       let* constructor_name = Name.of_string false constructor_name in
+      print_string ("\nOf " ^ Name.to_string constructor_name);
       let typ_vars = Name.Map.empty in
       begin match cd_args with
         | Cstr_tuple param_typs ->
@@ -191,6 +192,10 @@ module Single = struct
             ) [] defined_typ_params in
           return (List.map (fun v -> Type.Variable v) defined_typ_params, List.rev new_typ_vars)
       in
+      print_string "\nFinal\n";
+      print_string (VarEnv.to_string typ_vars);
+      print_string (VarEnv.to_string new_typ_vars);
+      print_string "\n";
       let typ_vars = VarEnv.union typ_vars new_typ_vars in
       let typ_name = MixedPath.of_name_gadt typ_name in
       let* param_typs = Monad.List.map (Type.decode_var_tags typ_vars None false false) param_typs in

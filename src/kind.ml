@@ -19,8 +19,8 @@ let union k1 k2 : t =
   match k1, k2 with
   | Arrow _ , _ -> k1
   | _, Arrow _ -> k2
-  | Set, t | t, Set -> t
-  | t, _ -> t
+  | Tag, _ | _, Tag -> Tag
+  | _ -> Set
 
 let rec set_arrows (arity : int) : t =
   if arity = 0 then

@@ -10,20 +10,18 @@ let to_string (env : t) : string =
   ^ " ]"
 
 (* Union preserves the ordering of the first argument *)
-let rec union_aux (env1 : t) (env2 : t) : t =
+let rec union (env1 : t) (env2 : t) : t =
   match env1 with
   | [] -> env2
   | (name, kind) :: env ->
     match List.assoc_opt name env2 with
     | None ->
-      (name, kind) :: union_aux env env2
+      (name, kind) :: union env env2
     | Some kind' ->
       let env2 = List.remove_assoc name env2 in
       let kind = Kind.union kind kind' in
-      (name, kind) :: union_aux env env2
-
-let union (env1 : t) (env2 : t) : t =
-  union_aux env1 env2
+      (* let env = (name, kind) :: (List.remove_assoc name env) in *)
+      (name, kind) :: union env env2
 
 let merge (env : t list) : t =
   match env with
