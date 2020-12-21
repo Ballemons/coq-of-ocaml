@@ -129,8 +129,7 @@ module Inductive = struct
     let sorted_notations = sort_notations [] inductive.notations in
     (sorted_notations |> List.map (fun (name, typ_args, typ) ->
       to_coq_notations_where subst (to_coq_notation_name name) typ_args typ
-    )) @
-    (inductive.constructor_records |> List.map
+    )) @ (inductive.constructor_records |> List.map
       (fun (name, records) ->
         records |> List.map (fun ({ AdtConstructors.RecordSkeleton.module_name; _ }, typ_args, typ) ->
           to_coq_notations_where
