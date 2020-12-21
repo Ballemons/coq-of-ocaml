@@ -10,6 +10,7 @@ module Inductive = struct
       : (Name.t * (AdtConstructors.RecordSkeleton.t * Name.t list * Type.t) list) list;
     notations : notation list;
     records : AdtConstructors.RecordSkeleton.t list;
+    is_gadt : bool;
     (* typs is a list of mutually defined Inductives
      * of the form
      * Inductive `Name.t` (`Name.t list` : Set) : Set :=
@@ -233,6 +234,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
           notations = [];
           records = [];
           typs = [(name, typ_args, constructors)];
+          is_gadt = false;
         }))
         NotSupported
         "Polymorphic variant types are defined as standard algebraic types"
@@ -281,9 +283,11 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
       ExtensibleType
       "We do not handle extensible types"
   | _ ->
-    (typs |> Monad.List.fold_left (fun (constructor_records, notations, records, typs) typ ->
+    (typs |> Monad.List.fold_left (fun (constructor_records, notations, records, typs, g) typ ->
       set_loc (Loc.of_location typ.typ_loc) (
       let* name = Name.of_ident false typ.typ_id in
+      let* attributes = Attribute.of_attributes typ.typ_attributes in
+      let is_gadt = Attribute.has_force_gadt attributes in
       AdtParameters.of_ocaml typ.typ_type.type_params >>= fun typ_args ->
       match typ with
       | { typ_type = { type_manifest = Some typ; _ }; typ_id; _ } ->
@@ -296,7 +300,8 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
               constructor_records,
               notations,
               records,
-              (name, typ_args, constructors) :: typs
+              (name, typ_args, constructors) :: typs,
+              is_gadt
             )
             NotSupported
             "Polymorphic variant types are defined as standard algebraic types"
@@ -312,12 +317,13 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
               typ
             ) :: notations,
             records,
-            typs
+            typs,
+            is_gadt
           )
         end
       | { typ_type = { type_kind = Type_abstract; type_manifest = None; _ }; _ } ->
         raise
-          (constructor_records, notations, records, typs)
+          (constructor_records, notations, records, typs, is_gadt)
           NotSupported
           "Abstract types not supported in mutually recursive definitions"
       | { typ_type = { type_kind = Type_record (fields, _); _ }; _ } ->
@@ -345,7 +351,8 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
             module_name = name;
             typ_name = Name.suffix_by_skeleton name;
            } :: records,
-          typs
+          typs,
+          is_gadt
         )
       | { typ_type = { type_kind = Type_variant cases; _ }; typ_id; _ } ->
         let typ_args = AdtParameters.get_parameters typ_args in
@@ -363,15 +370,16 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
           constructor_records,
           notations,
           records,
-          (name, [], constructors) :: typs
+          (name, [], constructors) :: typs,
+          is_gadt
         )
       | { typ_type = { type_kind = Type_open; _ }; _ } ->
         raise
-          (constructor_records, notations, records, typs)
+          (constructor_records, notations, records, typs, is_gadt)
           ExtensibleType
           "We do not handle extensible types"
       )
-    ) ([], [], [], [])) >>= fun (constructor_records, notations, records, typs) ->
+    ) ([], [], [], [], false)) >>= fun (constructor_records, notations, records, typs, is_gadt) ->
 
     let typs = typs |> List.map (fun (name, typ_args, constructors) ->
         (name, AdtParameters.get_parameters typ_args, constructors)) in
@@ -379,6 +387,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
     return (Inductive (
         { constructor_records = List.rev constructor_records;
           notations = List.rev notations;
+          is_gadt;
           records;
           typs = List.rev typs
         }
@@ -390,6 +399,7 @@ let to_coq_typs
     (name : Name.t)
     (params : Name.t list)
     (constructors : AdtConstructors.t)
+    (is_gadt : bool)
   : SmartPrint.t =
   let keyword = if is_first then !^ "Inductive" else !^ "with" in
   nest (
@@ -408,9 +418,13 @@ let to_coq_typs
     let arity = List.length constructor.res_typ_params + 1 in
     let inductive_typ = Pp.set in
     let l = List.init arity (fun i ->
-        if i = arity - 1
-        then inductive_typ
-        else !^ "vtag") in
+        if is_gadt
+        then
+          (if i = arity - 1
+          then inductive_typ
+          else !^ "vtag")
+        else inductive_typ)
+    in
     separate (!^ " -> ") l
     ^^ !^ ":=" ^-^
     separate empty (
@@ -461,7 +475,7 @@ let to_coq_inductive
     separate (newline ^^ newline) (inductive.typs |>
                                    List.mapi (fun index (name, params, constructors) ->
                                        let is_first = index = 0 in
-                                       to_coq_typs subst is_first name params constructors
+                                       to_coq_typs subst is_first name params constructors inductive.is_gadt
                                      )
                                   ) ^-^
     (match notations_wheres with
