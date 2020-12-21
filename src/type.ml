@@ -381,12 +381,13 @@ and of_typs_exprs_constr
 and get_constr_arg_tags
     (path : Path.t)
     : bool list Monad.t =
-  (* TODO: Simplify this to have a single match *)
   let* env = get_env in
   match Env.find_type path env with
-  | { type_kind = Type_variant _; type_params = params; _ } ->
-    let name = Path.last path in
-    if List.mem name Name.native_type_constructors
+  | { type_kind = Type_variant _; type_params = params; type_attributes = attributes; _ } ->
+    (* let name = Path.last path in *)
+    (* if List.mem name Name.native_type_constructors *)
+    let* attributes = Attribute.of_attributes attributes in
+    if not @@ Attribute.has_force_gadt attributes
     then return @@ tag_no_args params
     else return @@ tag_all_args params
   | { type_kind = Type_record _; type_params = params; _} ->
