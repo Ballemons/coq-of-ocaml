@@ -240,7 +240,9 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let is_gadt_match =
       Attribute.has_match_gadt attributes ||
       Attribute.has_match_gadt_with_result attributes in
-    let is_gadt = Attribute.has_force_gadt attributes in
+    Attribute.of_attributes e.exp_attributes >>= fun e_attributes ->
+    (* TODO: Get the right is_gadt by getting the attribute of the type declaration *)
+    let is_gadt = Attribute.has_force_gadt (e_attributes) in
     let do_cast_results = Attribute.has_match_gadt_with_result attributes in
     let is_with_default_case = Attribute.has_match_with_default attributes in
     let* e = of_expression typ_vars e in
@@ -465,11 +467,12 @@ and of_match
       let* motive = Type.decode_var_tags new_typ_vars None false false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
-      if not is_gadt || List.length args = 0 || (Type.is_native_type cast)
+      if List.length args = 0 || (Type.is_native_type cast)
       then return None
       else return (Some ({cast; args; motive}))
     end
   in
+  print_string ("Size of cases: " ^ string_of_int (List.length cases) ^ "\n");
   (cases |> Monad.List.filter_map (fun {c_lhs; c_guard; c_rhs} ->
     set_loc (Loc.of_location c_lhs.pat_loc) (
     let* bound_vars =
@@ -507,14 +510,18 @@ and of_match
     end >>= fun guard ->
     Pattern.of_pattern c_lhs >>= fun pattern ->
     match c_rhs.exp_desc with
-    | Texp_unreachable -> return None
+    | Texp_unreachable ->
+      let e = dependent_transform (Ltac Discriminate) dep_match in
+      if is_gadt
+      then return (Util.Option.map pattern (fun pattern ->
+          (pattern, None, None, e)))
+      else
+        ((print_string "isnt gadt!!\n"); return None)
     | _ ->
       of_expression typ_vars c_rhs >>= fun e ->
       let e = dependent_transform e dep_match in
-      return (
-        Util.Option.map pattern (fun pattern ->
-        (pattern, existential_cast, guard, e))
-      )
+      return (Util.Option.map pattern (fun pattern ->
+          (pattern, existential_cast, guard, e)))
     )
   )) >>= fun cases_with_guards ->
   let guards =
@@ -544,6 +551,7 @@ and of_match
     | _ :: _ -> Tuple (e :: guard_checks) in
   let i = ref (-1) in
   let nb_guards = List.length guard_checks in
+  print_string ("Size of cases: " ^ string_of_int (List.length cases_with_guards) ^ "\n");
   let cases =
     cases_with_guards |> List.map (fun (p, existential_cast, guard, rhs) ->
       let is_guarded = match guard with Some _ -> true | None -> false in
@@ -559,6 +567,7 @@ and of_match
           ) in
       (p, existential_cast, rhs)
     ) in
+  print_string ("Size of cases: " ^ string_of_int (List.length cases) ^ "\n");
   let t = Match (e, dep_match, cases, is_with_default_case) in
   (* Ignore dependent pattern matching when you only have one case, because that becomes a let *)
   if List.length cases <= 1 then
@@ -696,7 +705,6 @@ and of_let
       end
     | _ ->
       import_let_fun typ_vars false is_rec cases >>= fun def ->
-      print_string "LetFun!\n";
       return (LetFun (def, e2))
     end
 
