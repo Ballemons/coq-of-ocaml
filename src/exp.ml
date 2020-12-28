@@ -557,12 +557,16 @@ and of_match
       (p, existential_cast, rhs)
     ) in
   let t = Match (e, dep_match, cases, is_with_default_case) in
-  match dep_match with
-  | None -> return t
-  | Some dep_match ->
-    let eq_refl = "eq_refl" |> Name.of_string_raw |> MixedPath.of_name in
-    let ts = List.map (fun _ -> Variable (eq_refl, [])) dep_match.args in
-    return (Apply (t, ts))
+  (* Ignore dependent pattern matching when you only have one case, because that becomes a let *)
+  if List.length cases <= 1 then
+    return t
+  else
+    match dep_match with
+    | None -> return t
+    | Some dep_match ->
+      let eq_refl = "eq_refl" |> Name.of_string_raw |> MixedPath.of_name in
+      let ts = List.map (fun _ -> Variable (eq_refl, [])) dep_match.args in
+      return (Apply (t, ts))
 
 (** Generate a variable and a "match" on this variable from a list of
     patterns. *)
