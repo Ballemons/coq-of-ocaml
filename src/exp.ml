@@ -207,9 +207,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let is_gadt_match =
       Attribute.has_match_gadt attributes ||
       Attribute.has_match_gadt_with_result attributes in
+    let is_gadt = Attribute.has_force_gadt attributes in
     let do_cast_results = Attribute.has_match_gadt_with_result attributes in
     let is_with_default_case = Attribute.has_match_with_default attributes in
-    open_cases typ_vars cases is_gadt_match do_cast_results is_with_default_case >>= fun (x, e) ->
+    open_cases typ_vars cases is_gadt_match do_cast_results is_with_default_case is_gadt >>= fun (x, e) ->
     return (Function (x, e))
   | Texp_apply (e_f, e_xs) ->
     of_expression typ_vars e_f >>= fun e_f ->
@@ -239,10 +240,11 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let is_gadt_match =
       Attribute.has_match_gadt attributes ||
       Attribute.has_match_gadt_with_result attributes in
+    let is_gadt = Attribute.has_force_gadt attributes in
     let do_cast_results = Attribute.has_match_gadt_with_result attributes in
     let is_with_default_case = Attribute.has_match_with_default attributes in
     let* e = of_expression typ_vars e in
-    of_match typ_vars e cases is_gadt_match do_cast_results is_with_default_case
+    of_match typ_vars e cases is_gadt_match do_cast_results is_with_default_case is_gadt
   | Texp_tuple es ->
     Monad.List.map (of_expression typ_vars) es >>= fun es ->
     return (Tuple es)
@@ -450,6 +452,7 @@ and of_match
   (is_gadt_match : bool)
   (do_cast_results : bool)
   (is_with_default_case : bool)
+  (is_gadt : bool)
   : t Monad.t =
   let* dep_match : dependent_pattern_match option =
     begin match cases with
@@ -462,7 +465,7 @@ and of_match
       let* motive = Type.decode_var_tags new_typ_vars None false false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
-      if List.length args = 0 || (Type.is_native_type cast)
+      if not is_gadt || List.length args = 0 || (Type.is_native_type cast)
       then return None
       else return (Some ({cast; args; motive}))
     end
@@ -576,12 +579,13 @@ and open_cases
   (is_gadt_match : bool)
   (do_cast_results : bool)
   (is_with_default_case : bool)
+  (is_gadt : bool)
   : (Name.t * t) Monad.t =
   let name = Name.FunctionParameter in
   let e = Variable (MixedPath.of_name name, []) in
   let* e =
     of_match
-      typ_vars e cases is_gadt_match do_cast_results is_with_default_case in
+      typ_vars e cases is_gadt_match do_cast_results is_with_default_case is_gadt in
   return (name, e)
 
 and import_let_fun
