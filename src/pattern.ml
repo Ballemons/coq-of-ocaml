@@ -20,7 +20,7 @@ type t =
 let rec of_pattern (p : pattern) : t option Monad.t =
   set_loc (Loc.of_location p.pat_loc) (
   match p.pat_desc with
-  | Tpat_any -> return (Some Any)
+  | Tpat_any -> print_string "pattern any\n"; return (Some Any)
   | Tpat_var (x, _) ->
     Name.of_ident true x >>= fun x ->
     return (Some (Variable x))
@@ -125,7 +125,7 @@ let rec flatten_or (p : t) : t list =
 (** Pretty-print a pattern to Coq (inside parenthesis if the [paren] flag is set). *)
 let rec to_coq (paren : bool) (p : t) : SmartPrint.t =
   match p with
-  | Any -> !^ "_"
+  | Any -> (print_string "any\n"); !^ "_"
   | Constant c -> Constant.to_coq c
   | Variable x -> Name.to_coq x
   | Tuple ps ->

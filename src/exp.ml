@@ -472,7 +472,6 @@ and of_match
       else return (Some ({cast; args; motive}))
     end
   in
-  print_string ("Size of cases: " ^ string_of_int (List.length cases) ^ "\n");
   (cases |> Monad.List.filter_map (fun {c_lhs; c_guard; c_rhs} ->
     set_loc (Loc.of_location c_lhs.pat_loc) (
     let* bound_vars =
@@ -516,7 +515,6 @@ and of_match
       then return (Util.Option.map pattern (fun pattern ->
           (pattern, None, None, e)))
       else
-        ((print_string "isnt gadt!!\n"); return None)
     | _ ->
       of_expression typ_vars c_rhs >>= fun e ->
       let e = dependent_transform e dep_match in
@@ -551,7 +549,6 @@ and of_match
     | _ :: _ -> Tuple (e :: guard_checks) in
   let i = ref (-1) in
   let nb_guards = List.length guard_checks in
-  print_string ("Size of cases: " ^ string_of_int (List.length cases_with_guards) ^ "\n");
   let cases =
     cases_with_guards |> List.map (fun (p, existential_cast, guard, rhs) ->
       let is_guarded = match guard with Some _ -> true | None -> false in
@@ -567,7 +564,6 @@ and of_match
           ) in
       (p, existential_cast, rhs)
     ) in
-  print_string ("Size of cases: " ^ string_of_int (List.length cases) ^ "\n");
   let t = Match (e, dep_match, cases, is_with_default_case) in
   (* Ignore dependent pattern matching when you only have one case, because that becomes a let *)
   if List.length cases <= 1 then
@@ -986,7 +982,6 @@ and of_structure
             let* name = Name.of_ident false typ_id in
             (type_params |> Monad.List.map Type.of_type_expr_variable) >>= fun typ_args ->
             Type.of_type_expr_without_free_vars typ >>= fun typ ->
-            print_string "Here!\n";
             return (LetTyp (name, typ_args, typ, e_next))
           | _ ->
             raise
