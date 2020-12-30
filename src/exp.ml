@@ -517,11 +517,7 @@ and of_match
     Pattern.of_pattern c_lhs >>= fun pattern ->
     match c_rhs.exp_desc with
     | Texp_unreachable ->
-      let e = dependent_transform (Ltac Discriminate) dep_match in
-      if is_tagged_gadt
-      then return (Util.Option.map pattern (fun pattern ->
-          (pattern, None, None, e)))
-      else return None
+      return None
     | _ ->
       of_expression typ_vars c_rhs >>= fun e ->
       let e = dependent_transform e dep_match in
@@ -1311,14 +1307,14 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
           newline
         else
           space in
-      let dep_match = match dep_match with
+      let dep_match_s = match dep_match with
         | None -> empty
         | Some { cast; args ; motive } ->
           !^ "in" ^^ Type.to_coq None None cast
           ^^ !^ "return" ^^ separate (!^ " -> ") (List.map (Type.to_coq None None) (args @ [motive]))
       in
       nest (
-        !^ "match" ^^ to_coq false e ^^ dep_match ^^
+        !^ "match" ^^ to_coq false e ^^ dep_match_s ^^
         !^ "with" ^^ newline ^^
         separate separator (cases |> List.map (fun (p, existential_cast, e) ->
           nest (
@@ -1327,8 +1323,9 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
           )
         )) ^^
         (if is_with_default_case then
-           (* !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ !^ "unreachable_gadt_branch" ^^ newline *)
-           !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ to_coq_ltac Discriminate ^^ newline
+           if Option.is_some dep_match
+           then !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ to_coq_ltac Discriminate ^^ newline
+           else !^ "|" ^^ !^ "_" ^^ !^ "=>" ^^ !^ "unreachable_gadt_branch" ^^ newline
          else
            empty
         ) ^^
