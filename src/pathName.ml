@@ -463,6 +463,16 @@ let is_variant_declaration
   | { type_kind = Type_variant constructors; type_params = params; _ } -> return @@ Some (constructors, params)
   | _ | exception _ -> return None
 
+let is_tagged_gadt (path : Path.t) : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_kind = Type_variant _; type_attributes = attributes; _ } ->
+    let* attributes = Attribute.of_attributes attributes in
+    if Attribute.has_tag_gadt attributes
+    then return true
+    else return false
+  | _ | exception _ -> return false
+
 let is_synonym_declaration
     (path : Path.t)
   : Types.type_expr list Monad.t =

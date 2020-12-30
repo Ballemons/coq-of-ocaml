@@ -3,7 +3,8 @@ open Monad.Notations
 
 type t =
   | Axiom
-  | ForceGadt
+  | EraseGadt
+  | TagGadt
   | Implicit of string
   | MatchGadt
   | MatchGadtWithResult
@@ -36,7 +37,8 @@ let of_attributes (attributes : Typedtree.attributes) : t list Monad.t =
     let id = attr_name.Asttypes.txt in
     match id with
     | "coq_axiom" -> return (Some Axiom)
-    | "coq_force_gadt" -> return (Some ForceGadt)
+    | "coq_erase_gadt" -> return (Some EraseGadt)
+    | "coq_tag_gadt" -> return (Some TagGadt)
     | "coq_implicit" ->
       of_payload_string id attr_payload >>= fun payload ->
       return (Some (Implicit payload))
@@ -56,9 +58,15 @@ let has_axiom (attributes : t list) : bool =
     | _ -> false
   )
 
-let has_force_gadt (attributes : t list) : bool =
+let has_erase_gadt (attributes : t list) : bool =
   attributes |> List.exists (function
-    | ForceGadt -> true
+    | EraseGadt -> true
+    | _ -> false
+  )
+
+let has_tag_gadt (attributes : t list) : bool =
+  attributes |> List.exists (function
+    | TagGadt -> true
     | _ -> false
   )
 

@@ -142,7 +142,6 @@ let is_native_type
   | Apply (mpath, _, _) -> MixedPath.is_native_type mpath
   | _ -> false
 
-
 let print_type
     (path : Path.t)
   : unit Monad.t =
@@ -165,7 +164,6 @@ let is_type_variant (t : Types.type_expr) : bool Monad.t =
     let* is_variant = PathName.is_variant_declaration path in
     return @@ Option.is_some is_variant
   | _ -> return false
-
 
 (** This function is utilized for building dependent pattern matching,
     if typ is a type constructor then it will return a list of equations
@@ -387,15 +385,14 @@ and get_constr_arg_tags
     (* let name = Path.last path in *)
     (* if List.mem name Name.native_type_constructors *)
     let* attributes = Attribute.of_attributes attributes in
-    if not @@ Attribute.has_force_gadt attributes
-    then return @@ tag_no_args params
-    else return @@ tag_all_args params
+    if Attribute.has_tag_gadt attributes
+    then return @@ tag_all_args params
+    else return @@ tag_no_args params
   | { type_kind = Type_record _; type_params = params; _} ->
     (* FIXME: Recursively check if record type should be a tag *)
     return @@ tag_no_args params
-
   | { type_manifest = None; type_kind = Type_abstract; type_params = params; _ } ->
-    return (List.map (fun _ -> false) params)
+    return @@ tag_no_args params
   | { type_manifest = Some typ; type_params = params; _ } ->
     let* (typ, typ_vars, new_typ_vars) = of_typ_expr_in_constr false true Name.Map.empty typ in
     return @@ List.map (fun (_, kind) ->

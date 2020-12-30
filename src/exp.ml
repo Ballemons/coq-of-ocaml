@@ -93,6 +93,7 @@ and ltac =
   | Exact of t
   | Concat of ltac * ltac
 
+
 (** Take a function expression and make explicit the list of arguments and
     the body. *)
 let rec open_function (e : t) : Name.t list * t =
@@ -145,6 +146,13 @@ module ModuleTypValues = struct
       )
     | _ -> return []
 end
+
+
+let is_tagged_gadt (e : expression) : bool Monad.t =
+  let ty = e.exp_type.desc in
+  match ty with
+  | Tconstr (path, _, _) -> PathName.is_tagged_gadt path
+  | _ -> return false
 
 let dependent_transform (e : t) (dep_match : dependent_pattern_match option) =
   match dep_match with
@@ -207,10 +215,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let is_gadt_match =
       Attribute.has_match_gadt attributes ||
       Attribute.has_match_gadt_with_result attributes in
-    let is_gadt = Attribute.has_force_gadt attributes in
+    let* is_tagged_gadt = is_tagged_gadt e in
     let do_cast_results = Attribute.has_match_gadt_with_result attributes in
     let is_with_default_case = Attribute.has_match_with_default attributes in
-    open_cases typ_vars cases is_gadt_match do_cast_results is_with_default_case is_gadt >>= fun (x, e) ->
+    open_cases typ_vars cases is_gadt_match do_cast_results is_with_default_case is_tagged_gadt >>= fun (x, e) ->
     return (Function (x, e))
   | Texp_apply (e_f, e_xs) ->
     of_expression typ_vars e_f >>= fun e_f ->
@@ -241,12 +249,11 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
       Attribute.has_match_gadt attributes ||
       Attribute.has_match_gadt_with_result attributes in
     Attribute.of_attributes e.exp_attributes >>= fun e_attributes ->
-    (* TODO: Get the right is_gadt by getting the attribute of the type declaration *)
-    let is_gadt = Attribute.has_force_gadt (e_attributes) in
+    let* is_tagged_gadt = is_tagged_gadt e in
     let do_cast_results = Attribute.has_match_gadt_with_result attributes in
     let is_with_default_case = Attribute.has_match_with_default attributes in
     let* e = of_expression typ_vars e in
-    of_match typ_vars e cases is_gadt_match do_cast_results is_with_default_case is_gadt
+    of_match typ_vars e cases is_gadt_match do_cast_results is_with_default_case is_tagged_gadt
   | Texp_tuple es ->
     Monad.List.map (of_expression typ_vars) es >>= fun es ->
     return (Tuple es)
@@ -454,7 +461,7 @@ and of_match
   (is_gadt_match : bool)
   (do_cast_results : bool)
   (is_with_default_case : bool)
-  (is_gadt : bool)
+  (is_tagged_gadt : bool)
   : t Monad.t =
   let* dep_match : dependent_pattern_match option =
     begin match cases with
@@ -467,7 +474,7 @@ and of_match
       let* motive = Type.decode_var_tags new_typ_vars None false false motive in
       let (cast, args) = Type.normalize_constructor cast in
       (* Only generates dependent pattern matching for actual gadts *)
-      if List.length args = 0 || (Type.is_native_type cast)
+      if not is_tagged_gadt || List.length args = 0 || (Type.is_native_type cast)
       then return None
       else return (Some ({cast; args; motive}))
     end
@@ -511,10 +518,10 @@ and of_match
     match c_rhs.exp_desc with
     | Texp_unreachable ->
       let e = dependent_transform (Ltac Discriminate) dep_match in
-      if is_gadt
+      if is_tagged_gadt
       then return (Util.Option.map pattern (fun pattern ->
           (pattern, None, None, e)))
-      else
+      else return None
     | _ ->
       of_expression typ_vars c_rhs >>= fun e ->
       let e = dependent_transform e dep_match in

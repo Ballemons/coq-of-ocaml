@@ -287,7 +287,7 @@ let of_ocaml (typs : type_declaration list) : t Monad.t =
       set_loc (Loc.of_location typ.typ_loc) (
       let* name = Name.of_ident false typ.typ_id in
       let* attributes = Attribute.of_attributes typ.typ_attributes in
-      let is_gadt = Attribute.has_force_gadt attributes in
+      let is_gadt = Attribute.has_tag_gadt attributes in
       AdtParameters.of_ocaml typ.typ_type.type_params >>= fun typ_args ->
       match typ with
       | { typ_type = { type_manifest = Some typ; _ }; typ_id; _ } ->
