@@ -53,6 +53,8 @@ type (_, _) comparable_struct =
 
 type 'a comparable_ty = ('a, comb) comparable_struct
 
+type ('a, 'b) zoo = ('a, comb) comparable_struct * 'b * 'a list
+
 module type Boxed_set = sig
   type elt
   val elt_ty : elt comparable_ty
@@ -75,82 +77,82 @@ module type Triple = sig
   val va : a
   val vb : b
   val vc : c
-  include IncludedFoo
+  (* include IncludedFoo *)
 end
 
-let tripe : (module Triple) =
-  (module struct
-    type a = int
-    type b = bool
-    type c = string
-    let va = 0
-    let vb = false
-    let vc = ""
-    type bar = int
-    let foo = 12
-  end)
-
-module type UsingTriple = sig
-  type elt'
-  module T : Triple
-  module OPS' : S.SET
-  module OPS'' : S.SET with type elt = elt' and type t = string list
-  type 'a table = 'a list
-end
-
-let set_update
-  : type a. a -> bool -> a set -> a set
-  = fun v b (module Box) ->
-  (module struct
-    type elt = a
-    let elt_ty = Box.elt_ty
-    module OPS = Box.OPS
-    let boxed =
-      if b
-      then Box.OPS.add v Box.boxed
-      else Box.OPS.remove v Box.boxed
-    let size =
-      let mem = Box.OPS.mem v Box.boxed in
-      if mem
-      then if b then Box.size else Box.size - 1
-      else if b then Box.size + 1 else Box.size
-  end)
-
-let set_mem
-  : type elt. elt -> elt set -> bool
-  = fun v (module Box) ->
-    Box.OPS.mem v Box.boxed
-
-let set_fold
-  : type elt acc. (elt -> acc -> acc) -> elt set -> acc -> acc
-  = fun f (module Box) ->
-    Box.OPS.fold f Box.boxed
-
-let set_nested
-  : type elt. elt set -> elt set
-  = fun (module Box) ->
-  (module struct
-    let result : elt set =
-      (module struct
-        type nonrec elt = elt
-        let elt_ty = Box.elt_ty
-        module OPS = Box.OPS
-        let boxed = Box.boxed
-        let size = Box.size
-      end)
-    type nonrec elt = elt
-    let elt_ty = Box.elt_ty
-    module OPS = Box.OPS
-    let boxed = Box.boxed
-    let size =
-      let (module Result) = result in
-      Result.size
-  end)
-
-module type MAP = sig
-  type key
-  type +'a t
-  val empty : 'a t
-  val is_empty : 'a t -> bool
-  val mem : key -> 'a t -> bool
-end
+(* let tripe : (module Triple) =
+ *   (module struct
+ *     type a = int
+ *     type b = bool
+ *     type c = string
+ *     let va = 0
+ *     let vb = false
+ *     let vc = ""
+ *     type bar = int
+ *     let foo = 12
+ *   end)
+ *
+ * module type UsingTriple = sig
+ *   type elt'
+ *   module T : Triple
+ *   module OPS' : S.SET
+ *   module OPS'' : S.SET with type elt = elt' and type t = string list
+ *   type 'a table = 'a list
+ * end
+ *
+ * let set_update
+ *   : type a. a -> bool -> a set -> a set
+ *   = fun v b (module Box) ->
+ *   (module struct
+ *     type elt = a
+ *     let elt_ty = Box.elt_ty
+ *     module OPS = Box.OPS
+ *     let boxed =
+ *       if b
+ *       then Box.OPS.add v Box.boxed
+ *       else Box.OPS.remove v Box.boxed
+ *     let size =
+ *       let mem = Box.OPS.mem v Box.boxed in
+ *       if mem
+ *       then if b then Box.size else Box.size - 1
+ *       else if b then Box.size + 1 else Box.size
+ *   end)
+ *
+ * let set_mem
+ *   : type elt. elt -> elt set -> bool
+ *   = fun v (module Box) ->
+ *     Box.OPS.mem v Box.boxed
+ *
+ * let set_fold
+ *   : type elt acc. (elt -> acc -> acc) -> elt set -> acc -> acc
+ *   = fun f (module Box) ->
+ *     Box.OPS.fold f Box.boxed
+ *
+ * let set_nested
+ *   : type elt. elt set -> elt set
+ *   = fun (module Box) ->
+ *   (module struct
+ *     let result : elt set =
+ *       (module struct
+ *         type nonrec elt = elt
+ *         let elt_ty = Box.elt_ty
+ *         module OPS = Box.OPS
+ *         let boxed = Box.boxed
+ *         let size = Box.size
+ *       end)
+ *     type nonrec elt = elt
+ *     let elt_ty = Box.elt_ty
+ *     module OPS = Box.OPS
+ *     let boxed = Box.boxed
+ *     let size =
+ *       let (module Result) = result in
+ *       Result.size
+ *   end)
+ *
+ * module type MAP = sig
+ *   type key
+ *   type +'a t
+ *   val empty : 'a t
+ *   val is_empty : 'a t -> bool
+ *   val mem : key -> 'a t -> bool
+ * end *)

@@ -7,34 +7,37 @@ Local Open Scope Z_scope.
 Local Open Scope type_scope.
 Import ListNotations.
 
-Inductive gre (a : Set) : Set :=
-| Arg : a -> gre a.
+Inductive foo : vtag -> vtag -> Set :=
+| Constr : forall {a : vtag} {c : Set} {b : vtag},
+  decode_vtag a -> c -> decode_vtag b -> foo a b.
 
-Arguments Arg {_}.
+Definition asdf : foo int_tag string_tag :=
+  Constr (1: decode_vtag int_tag)
+    (* ❌ Float constant 2.4 is approximated by the integer 2 *)
+    2 ("asdf": decode_vtag string_tag).
 
-Inductive foo : Set :=
-| Bar : forall {a b c : Set}, a -> int -> b -> c -> foo
-| Other : int -> foo.
+Inductive term : vtag -> Set :=
+| Nat : int -> term int_tag
+| Bool : bool -> term bool_tag
+| Add : term int_tag -> term int_tag -> term int_tag
+| Or : term bool_tag -> term bool_tag -> term bool_tag.
 
-Inductive expr : Set :=
-| Int : int -> expr
-| String : string -> expr
-| Sum : expr -> expr -> expr
-| Pair : expr -> expr -> expr.
+Fixpoint interp {a : vtag} (function_parameter : term a) : decode_vtag a :=
+  let interp (function_parameter : term a) : decode_vtag a :=
+    interp function_parameter in
+  match function_parameter in term t0 return t0 = a -> decode_vtag a with
+  | Nat n => fun eq0 => ltac:(subst; exact n)
+  | Bool b => fun eq0 => ltac:(subst; exact b)
+  | Add n m => fun eq0 => ltac:(subst; exact (Z.add (interp n) (interp m)))
+  | Or x y => fun eq0 => ltac:(subst; exact (orb (interp x) (interp y)))
+  end eq_refl.
 
-Fixpoint proj_int (e : expr) : int :=
-  match e with
-  | Int n => n
-  | Sum e1 e2 => Z.add (proj_int e1) (proj_int e2)
-  | _ => unreachable_gadt_branch
-  end.
+Inductive f : Set :=
+| C1 : f
+| C2 : f.
 
-Inductive one_case : Set :=
-| SingleCase : one_case
-| Impossible : one_case.
-
-Definition x : int :=
-  match SingleCase with
-  | SingleCase => 0
-  | _ => unreachable_gadt_branch
+Definition funf (x : f) : int :=
+  match x with
+  | C1 => 1
+  | C2 => 2
   end.

@@ -23,32 +23,28 @@ with unrelated : vtag -> Set :=
 | Unrelated : forall {a : vtag},
   'double ('simple (decode_vtag a)) -> unrelated a
 
-where "'simple" := (fun (t_b : Type) => t_b)
-and "'double" := (fun (t_b : Type) => t_b * 'simple t_b).
+where "'simple" := (fun (t_b : Set) => t_b)
+and "'double" := (fun (t_b : Set) => t_b * 'simple t_b).
 
 Definition double := 'double.
 Definition simple := 'simple.
 
 Module re_bis.
-  Record record {bis : Set} : Set := Build {
+  Record record : Set := Build {
   bis : bis }.
-  Arguments record : clear implicits.
-  Definition with_bis {t_bis} bis (r : record t_bis) :=
-    Build t_bis bis.
+  Definition with_bis bis (r : record) :=
+    Build bis.
 End re_bis.
 Definition re_bis_skeleton := re_bis.record.
 
 Module re.
-  Record record {payload message : Set} : Set := Build {
+  Record record : Set := Build {
   payload : payload;
   message : message }.
-  Arguments record : clear implicits.
-  Definition with_payload {t_payload t_message} payload
-    (r : record t_payload t_message) :=
-    Build t_payload t_message payload r.(message).
-  Definition with_message {t_payload t_message} message
-    (r : record t_payload t_message) :=
-    Build t_payload t_message r.(payload) message.
+  Definition with_payload payload (r : record) :=
+    Build payload r.(message).
+  Definition with_message message (r : record) :=
+    Build r.(payload) message.
 End re.
 Definition re_skeleton := re.record.
 
@@ -56,7 +52,7 @@ Reserved Notation "'re".
 Reserved Notation "'re_bis".
 
 Inductive ind : Set :=
-| Ind : 're int -> ind
+| Ind : 're -> ind
 
 where "'re" := (fun (t_a : Set) => re_skeleton t_a string)
 and "'re_bis" := (re_bis_skeleton unit).

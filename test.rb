@@ -93,6 +93,7 @@ class Tests
   def check
     puts "\e[1mChecking '.v':\e[0m"
     for test in @tests do
+	puts ("running " + test.source_file)
       print_result(test.check)
       puts test.coq_of_ocaml_cmd.join(" ")
     end

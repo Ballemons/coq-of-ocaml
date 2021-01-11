@@ -7,7 +7,7 @@ let empty = Empty
 let rec member x s =
   match s with
   | Empty -> false
-  | Node (s1, y, s2) -> 
+  | Node (s1, y, s2) ->
     if x < y then
       member x s1
     else if y < x then

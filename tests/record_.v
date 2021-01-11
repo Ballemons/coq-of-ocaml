@@ -7,6 +7,15 @@ Local Open Scope Z_scope.
 Local Open Scope type_scope.
 Import ListNotations.
 
+Open Scope Z_scope.
+Definition sqr (x : int) : int := (x*x).
+
+R
+
+Goal ((-3) = 3).
+  simpl.
+  apply f_equal.
+
 Module SizedString.
   Module t.
     Record record : Set := Build {
@@ -70,9 +79,9 @@ Module poly.
   Definition with_first {t_first t_second} first
     (r : record t_first t_second) :=
     Build t_first t_second first r.(second).
-  Definition with_second {t_first t_second} second
-    (r : record t_first t_second) :=
-    Build t_first t_second r.(first) second.
+  Definition with_second {t_second t_first} second
+    (r : record t_second t_first) :=
+    Build t_second t_first r.(first) second.
 End poly.
 Definition poly := poly.record.
 
@@ -82,56 +91,38 @@ Module ConstructorWithRecord.
   Module ConstructorRecords_t_exi.
     Module t.
       Module Foo.
-        Record record {name size : Type} : Type := Build {
+        Record record {name size : Set} : Set := Build {
         name : name;
         size : size }.
         Arguments record : clear implicits.
         Definition with_name {t_name t_size} name (r : record t_name t_size) :=
           Build t_name t_size name r.(size).
-        Definition with_size {t_name t_size} size (r : record t_name t_size) :=
-          Build t_name t_size r.(name) size.
       End Foo.
       Definition Foo_skeleton := Foo.record.
     End t.
     Module exi.
       Module Ex.
-        Record record {x : Type} : Type := Build {
-        x : x }.
-        Arguments record : clear implicits.
-        Definition with_x {t_x} x (r : record t_x) :=
-          Build t_x x.
-      End Ex.
-      Definition Ex_skeleton := Ex.record.
+      End  Ex.
     End exi.
   End ConstructorRecords_t_exi.
   Import ConstructorRecords_t_exi.
   
   Module loc.
-    Record record {x y : Type} : Type := Build {
-    x : x;
-    y : y }.
-    Arguments record : clear implicits.
-    Definition with_x {t_x t_y} x (r : record t_x t_y) :=
-      Build t_x t_y x r.(y).
-    Definition with_y {t_x t_y} y (r : record t_x t_y) :=
-      Build t_x t_y r.(x) y.
   End loc.
-  Definition loc_skeleton := loc.record.
-  
   Reserved Notation "'t.Foo".
   Reserved Notation "'exi.Ex".
   Reserved Notation "'loc".
   
-  Inductive t : Type :=
+  Inductive t : Set :=
   | Foo : 't.Foo -> t
   | Bar : 'loc -> t
   
-  with exi : Type :=
-  | Ex : forall {a : Type}, 'exi.Ex a -> exi
+  with exi : Set :=
+  | Ex : forall {a : Set}, 'exi.Ex a -> exi
   
   where "'loc" := (loc_skeleton int int)
   and "'t.Foo" := (t.Foo_skeleton string int)
-  and "'exi.Ex" := (fun (t_a : Type) => exi.Ex_skeleton t_a).
+  and "'exi.Ex" := (fun (t_a : Set) => exi.Ex_skeleton t_a).
   
   Module t.
     Include ConstructorRecords_t_exi.t.
@@ -161,20 +152,16 @@ Module ConstructorWithPolymorphicRecord.
   Module ConstructorRecords_t.
     Module t.
       Module Foo.
-        Record record {location payload size : Type} : Type := Build {
+        Record record : Set := Build {
         location : location;
         payload : payload;
         size : size }.
-        Arguments record : clear implicits.
-        Definition with_location {t_location t_payload t_size} location
-          (r : record t_location t_payload t_size) :=
-          Build t_location t_payload t_size location r.(payload) r.(size).
-        Definition with_payload {t_location t_payload t_size} payload
-          (r : record t_location t_payload t_size) :=
-          Build t_location t_payload t_size r.(location) payload r.(size).
-        Definition with_size {t_location t_payload t_size} size
-          (r : record t_location t_payload t_size) :=
-          Build t_location t_payload t_size r.(location) r.(payload) size.
+        Definition with_location location (r : record) :=
+          Build location r.(payload) r.(size).
+        Definition with_payload payload (r : record) :=
+          Build r.(location) payload r.(size).
+        Definition with_size size (r : record) :=
+          Build r.(location) r.(payload) size.
       End Foo.
       Definition Foo_skeleton := Foo.record.
     End t.
@@ -183,11 +170,11 @@ Module ConstructorWithPolymorphicRecord.
   
   Reserved Notation "'t.Foo".
   
-  Inductive t : vtag -> vtag -> Type :=
+  Inductive t : vtag -> vtag -> Set :=
   | Foo : forall {loc a : vtag},
     't.Foo (decode_vtag loc) (decode_vtag a) -> t loc a
   
-  where "'t.Foo" := (fun (t_loc t_a : Type) => t.Foo_skeleton t_loc t_a int).
+  where "'t.Foo" := (fun (t_loc t_a : Set) => t.Foo_skeleton t_loc t_a int).
   
   Module t.
     Include ConstructorRecords_t.t.
@@ -195,5 +182,5 @@ Module ConstructorWithPolymorphicRecord.
   End t.
   
   Definition foo : t int_tag string_tag :=
-    Foo {| t.Foo.location := (12 : decode_vtag int_tag); t.Foo.payload := ("hi" :decode_vtag string_tag); t.Foo.size := 23 |}.
+    Foo {| t.Foo.location := 12; t.Foo.payload := "hi"; t.Foo.size := 23 |}.
 End ConstructorWithPolymorphicRecord.

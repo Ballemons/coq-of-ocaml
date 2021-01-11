@@ -8,20 +8,20 @@ Local Open Scope type_scope.
 Import ListNotations.
 
 Module List2.
-  Inductive t (a : Set) : Set :=
-  | Nil : t a
-  | Cons : a -> t a -> t a.
+  Inductive t : vtag -> Type :=
+  | Nil : forall {a : vtag}, t a
+  | Cons : forall {a : vtag}, decode_vtag a -> t a -> t a.
   
-  Arguments Nil {_}.
-  Arguments Cons {_}.
+  Fixpoint sum (l : t int_tag) : int :=
+    let sum (l : t int_tag) : int := sum l in
+    match l in t t0 return t0 = int_tag -> int with
+    | Nil => fun eq0 => ltac:(subst; exact 0)
+    | Cons x xs => fun eq0 => ltac:(subst; exact (Z.add x (sum xs)))
+    end eq_refl.
   
-  Fixpoint sum (l : t int) : int :=
-    match l with
-    | Nil => 0
-    | Cons x xs => Z.add x (sum xs)
-    end.
-  
-  Fixpoint of_list {A : Set} (function_parameter : list A) : t A :=
+  Fixpoint of_list {A : vtag}
+           (function_parameter : list (decode_vtag A))
+    : t A :=
     match function_parameter with
     | [] => Nil
     | cons x xs => Cons x (of_list xs)
@@ -32,9 +32,22 @@ Module List2.
   End Inside.
 End List2.
 
+Inductive decode_variant : Type ->  Set :=
+  | decode_variant_int : decode_variant (int)
+  | decode_variant_list : forall A, decode_variant (list A).
+Structure decode_struct (A: Type) :=
+  Mk_decode { decode_field : decode_variant A }.
+
+Canonical Structure decode_int : decode_struct int :=
+  {| decode_field := decode_variant_int |}.
+
+Canonical Structure decode_list (A : Type): decode_struct (list A) :=
+  {| decode_field := decode_variant_list A |}.
+
 Definition n {A : Set} (function_parameter : A) : int :=
   let '_ := function_parameter in
-  List2.sum (List2.of_list [ 5; 7; 6; List2.Inside.x ]).
+  let l : list _ := [ 5; 7; 6; List2.Inside.x ] in
+  List2.sum (List2.of_list l).
 
 Module Syn := List2.Inside.
 
