@@ -156,3 +156,18 @@ module List = struct
       sort_uniq compare greater >>= fun greater ->
       return (lesser @ [head] @ greater)
 end
+
+module Option = struct
+  open Notations
+
+  let is_some (x : 'a option t) : bool t =
+    let* x = x in
+    match x with
+    | Some _ -> return true
+    | None -> return false
+
+  let is_none (x : 'a option t) : bool t =
+    let* x = is_some x in
+    return @@ not x
+
+end

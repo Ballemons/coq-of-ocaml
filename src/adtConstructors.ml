@@ -154,10 +154,10 @@ end
         return (
           [
             Type.Apply (
-              MixedPath.PathName {
+              MixedPath.PathName ({
                 path = [typ_name];
                 base = constructor_name;
-              },
+              }, false),
               typ_args |> List.map (fun name ->
                 Type.Variable name
               )
@@ -171,10 +171,10 @@ end
             },
             typ_args,
             Type.Apply (
-              MixedPath.PathName {
+              MixedPath.PathName ({
                 path = [typ_name];
                 base = Name.suffix_by_skeleton constructor_name;
-              },
+              }, false),
               record_params
             )
           )

@@ -314,3 +314,43 @@ let typ_of_variants (labels : string list) : t option Monad.t =
           "- " ^ Pp.to_string (to_coq typ)
         ))
       )
+
+
+let is_variant_declaration
+    (path : Path.t)
+  : (Types.constructor_declaration list * Types.type_expr list) option Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_kind = Type_variant constructors; type_params = params; _ } -> return @@ Some (constructors, params)
+  | _ | exception _ -> return None
+
+let is_tagged_gadt (path : Path.t) : bool Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_kind = Type_variant _; type_attributes = attributes; _ } ->
+    let* attributes = Attribute.of_attributes attributes in
+    if Attribute.has_tag_gadt attributes
+    then return true
+    else return false
+  | _ | exception _ -> return false
+
+let is_synonym_declaration
+    (path : Path.t)
+  : Types.type_expr list Monad.t =
+  let* env = get_env in
+  match Env.find_type path env with
+  | { type_manifest = Some typ; type_params = params; _ } -> return @@ params
+  | _ | exception _ -> return []
+
+let is_native_type (path : Path.t) : bool =
+   let name = Path.last path in
+   List.exists (function x -> name = x) ["int"; "bool"; "string"; "unit"]
+
+let is_native_datatype (path : Path.t) : bool =
+   let name = Path.last path in
+   List.exists (function x -> name = x) ["list"; "option"; "map"]
+
+let is_gadt (path : Path.t) : bool Monad.t =
+  let* is_variant = is_variant_declaration path |> Monad.Option.is_some in
+  let is_native = is_native_datatype path in
+  return (is_variant && not is_native)

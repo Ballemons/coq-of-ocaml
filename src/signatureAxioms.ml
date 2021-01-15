@@ -270,7 +270,7 @@ let rec of_signature (signature : Typedtree.signature) : t Monad.t =
 let to_coq_included_field (module_name : Name.t) (field_name : PathName.t)
   : SmartPrint.t =
   MixedPath.to_coq (
-    MixedPath.Access (PathName.of_name [] module_name, [field_name], false)
+    MixedPath.Access (PathName.of_name [] module_name, [field_name], false, false)
   )
 
 let rec to_coq (signature : t) : SmartPrint.t =

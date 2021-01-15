@@ -3,13 +3,40 @@ open SmartPrint
 open Monad.Notations
 
 (** [Access] corresponds to projections from first-class modules. *)
+(** Second bool is to to flag gadt type constructors *)
 type t =
-  | Access of PathName.t * PathName.t list * bool
-  | PathName of PathName.t
+  | Access of PathName.t * PathName.t list * bool * bool
+  | PathName of PathName.t * bool
+
+(** Shortcut to introduce new local variables for example. *)
+
+let dec_name : t =
+  PathName ("decode_vtag" |> Name.of_string_raw |> PathName.of_name [], false)
 
 (** Shortcut to introduce new local variables for example. *)
 let of_name (name : Name.t) : t =
-  PathName (PathName.of_name [] name)
+  PathName (PathName.of_name [] name, false)
+
+let of_name_gadt (name : Name.t) : t =
+  PathName (PathName.of_name [] name, true)
+
+let is_gadt (path : t) : bool =
+  match path with
+  | Access (_, _, _, is_gadt) -> is_gadt
+  | PathName (_, is_gadt) -> is_gadt
+
+let is_tag (path : t) : bool =
+  match path with
+  | Access _ -> false
+  | PathName ({ base; _ }, _) ->
+    if Name.to_string base = "constr_tag"
+    then true
+    else false
+
+let is_native_type (path : t) : bool =
+  match path with
+  | Access _ -> false
+  | PathName ({ base; _ }, _) -> List.mem (Name.to_string base) Name.native_type_constructors
 
 let get_signature_path (path : Path.t) : Path.t option Monad.t =
   let* env = get_env in
@@ -172,6 +199,7 @@ let get_local_base_path (is_value : bool) (path : Path.t)
 (** The current environment must include the potential first-class module
     signature definition of the corresponding projection in the [path]. *)
 let of_path (is_value : bool) (path : Path.t) : t Monad.t =
+  let* is_gadt = PathName.is_gadt path in
   let* decomposed_path = DecomposedPath.get path in
   let flattened_decomposed_path =
     FlattenedDecomposedPath.get decomposed_path None in
@@ -186,10 +214,10 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
       let* path_name = PathName.of_path_without_convert is_value base_path in
       let* conversion = PathName.try_convert path_name in
       begin match conversion with
-      | None -> return (PathName path_name)
-      | Some path_name -> return (PathName path_name)
+      | None -> return (PathName (path_name, is_gadt))
+      | Some path_name -> return (PathName (path_name, is_gadt))
       end
-    | Some local_base_path -> return (PathName local_base_path)
+    | Some local_base_path -> return (PathName (local_base_path, is_gadt))
     end
   | _ ->
     let* is_local = is_module_path_local base_path in
@@ -203,11 +231,11 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
         let* field_name = Name.of_string is_value field in
         PathName.of_path_and_name_with_convert signature_path field_name
       ) in
-    return (Access (base_path_name, List.rev fields, is_local))
+    return (Access (base_path_name, List.rev fields, is_local, is_gadt))
 
 let to_string (mixed_path : t) : string =
   match mixed_path with
-  | Access (path, fields, is_local) ->
+  | Access (path, fields, is_local, _) ->
     let path = PathName.to_string path in
     let path =
       if is_local then
@@ -217,7 +245,7 @@ let to_string (mixed_path : t) : string =
     let fields =
       fields |> List.map (fun field -> "(" ^ PathName.to_string field ^ ")") in
     String.concat "." (path :: fields)
-  | PathName path_name -> PathName.to_string path_name
+  | PathName (path_name, _) -> PathName.to_string path_name
 
 let to_coq (mixed_path : t) : SmartPrint.t =
   !^ (to_string mixed_path)

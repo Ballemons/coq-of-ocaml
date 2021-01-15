@@ -273,7 +273,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
               return (Some (ModuleIncludeItem (
                 name,
                 typ_vars,
-                MixedPath.Access (reference, [field], false)
+                MixedPath.Access (reference, [field], false, false)
               )))
             | _ -> return None
           ) in

@@ -208,7 +208,7 @@ let build_module
           field_name,
           0,
           Variable (
-            MixedPath.Access (PathName.of_name [] modul, [], false),
+            MixedPath.Access (PathName.of_name [] modul, [], false, false),
             []
           )
         )
@@ -219,7 +219,7 @@ let build_module
           field_name,
           0,
           Variable (
-            MixedPath.PathName (PathName.of_name [] functo),
+            MixedPath.PathName ((PathName.of_name [] functo), false),
             []
           )
         )
@@ -306,10 +306,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
       match (e_f, e_xs) with
       | (
           Variable (
-            MixedPath.PathName {
+            MixedPath.PathName ({
               PathName.path = [Name.Make ("Pervasives" | "Stdlib")];
               base = Name.Make "op_atat"
-            },
+            }, _),
             []
           ),
           [Some f; x]
@@ -317,10 +317,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
         (f, [x])
       | (
           Variable (
-            MixedPath.PathName {
+            MixedPath.PathName ({
               PathName.path = [Name.Make ("Pervasives" | "Stdlib")];
               base = Name.Make "op_pipegt"
-            },
+            }, _),
             []
           ),
           [x; Some f]
@@ -332,7 +332,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let apply_with_let =
       match (e_f, e_xs) with
       | (
-          Variable (MixedPath.PathName path_name, []),
+          Variable (MixedPath.PathName (path_name, _), []),
           [Some e1; Some (Function (x, e2))]
         ) ->
         let name = PathName.to_string path_name in
@@ -344,7 +344,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let* apply_with_let_return =
       match (e_f, e_xs) with
       | (
-          Variable (MixedPath.PathName path_name, []),
+          Variable (MixedPath.PathName (path_name, _), []),
           [Some e1; Some (Function (x, e2))]
         ) ->
         let name = PathName.to_string path_name in
@@ -358,7 +358,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let* apply_with_return =
       match (e_f, e_xs) with
       | (
-          Variable (MixedPath.PathName path_name, []),
+          Variable (MixedPath.PathName (path_name, _), []),
           [Some e]
         ) ->
         let name = PathName.to_string path_name in
@@ -372,7 +372,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
     let* apply_with_return_let =
       match (e_f, e_xs) with
       | (
-          Variable (MixedPath.PathName path_name, []),
+          Variable (MixedPath.PathName (path_name, _), []),
           [Some e1; Some (Function (x, e2))]
         ) ->
         let name = PathName.to_string path_name in
@@ -438,7 +438,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
   | Texp_variant (label, e) ->
     PathName.constructor_of_variant label >>= fun path_name ->
     let constructor =
-      Variable (MixedPath.PathName path_name, []) in
+      Variable (MixedPath.PathName (path_name, false), []) in
     begin match e with
     | None -> return constructor
     | Some e ->
@@ -471,7 +471,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
           List.fold_left
             (fun extended_e (x, _, e) ->
               Apply (
-                Variable (MixedPath.PathName (PathName.prefix_by_with x), []),
+                Variable (MixedPath.PathName ((PathName.prefix_by_with x), false), []),
                 [Some e; Some extended_e]
               )
             )
@@ -622,10 +622,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression)
             e1,
             Match (
               Variable (
-                MixedPath.PathName {
+                MixedPath.PathName ({
                   PathName.path = [];
                   base = Name.FunctionParameter
-                },
+                }, false),
                 []
               ),
               cases,
@@ -728,7 +728,7 @@ and of_match
           [(
             Pattern.Any,
             None,
-            Variable (MixedPath.PathName PathName.false_value, [])
+            Variable (MixedPath.PathName (PathName.false_value, false), [])
           )] in
       Match (e, cases, false)
     ) in
@@ -924,11 +924,11 @@ and of_module_expr
                 PathName.of_path_and_name_with_convert
                   local_module_type_path
                   name in
-              return (MixedPath.Access (base, [field], false))
+              return (MixedPath.Access (base, [field], false, false))
             | None ->
               let* path_name =
                 PathName.of_path_and_name_with_convert path name in
-              return (MixedPath.PathName path_name) in
+              return (MixedPath.PathName (path_name, false)) in
           build_module
             module_typ_params_arity
             values
@@ -1011,6 +1011,7 @@ and of_module_expr
               MixedPath.Access (
                 { path = []; base = functor_result_name },
                 [],
+                false,
                 false
               )
             )
@@ -1224,7 +1225,7 @@ and of_include
           name,
           typ_vars,
           Variable (
-            MixedPath.Access (module_path_name, [signature_path_name], false),
+            MixedPath.Access (module_path_name, [signature_path_name], false, false),
             []
           ),
           e_next
@@ -1333,7 +1334,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
     | (
         None,
         _,
-        Variable (PathName { path = []; base }, []),
+        Variable (PathName ({ path = []; base }, _), []),
         _
      ) when Name.equal base x ->
       to_coq paren e2
@@ -1343,10 +1344,10 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         _,
         Match (
           Variable (
-            MixedPath.PathName {
+            MixedPath.PathName ({
               PathName.path = [];
               base = Name.FunctionParameter
-            },
+            }, _),
             []
           ),
           cases,

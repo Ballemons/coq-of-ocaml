@@ -179,8 +179,8 @@ let subst_name (source : Name.t) (target : Name.t) (typ : t) : t =
     | Apply (constructor, typs) ->
         let constructor_with_subst =
           match constructor with
-          | PathName { path = []; base } when Name.equal base source ->
-            MixedPath.PathName { path = []; base = target }
+          | PathName ({ path = []; base }, is_gadt) when Name.equal base source ->
+            MixedPath.PathName ({ path = []; base = target }, is_gadt)
           | _ -> constructor in
       Apply (constructor_with_subst, List.map subst typs)
     | Package (is_in_exp, path_name, typ_params) ->
@@ -216,17 +216,17 @@ let apply_with_notations (mixed_path : MixedPath.t) (typs : t list)
   let (mixed_path, typs) =
     match (mixed_path, typs) with
     | (
-        MixedPath.PathName {
+        MixedPath.PathName ({
           path = [Name.Make "Pervasives"];
           base = Name.Make "result"
-        },
+        }, _),
         [
           typ1;
           Apply (
-            MixedPath.PathName {
+            MixedPath.PathName ({
               path = [Name.Make "Error_monad"];
               base = Name.Make "trace"
-            },
+            }, _),
             _
           )
         ]
@@ -235,10 +235,10 @@ let apply_with_notations (mixed_path : MixedPath.t) (typs : t list)
   let apply_with_merge =
     match (mixed_path, typs) with
     | (
-        MixedPath.PathName { path = []; base = Name.Make source1 },
+        MixedPath.PathName ({ path = []; base = Name.Make source1 }, _),
         [
           Apply (
-            MixedPath.PathName { path = []; base = Name.Make source2 },
+            MixedPath.PathName ({ path = []; base = Name.Make source2 }, _),
             typs
           )
         ]
@@ -249,7 +249,7 @@ let apply_with_notations (mixed_path : MixedPath.t) (typs : t list)
       | Some target ->
         Some (
           Apply (
-            MixedPath.PathName { path = []; base = Name.Make target },
+            MixedPath.PathName ({ path = []; base = Name.Make target }, false),
             typs
           )
         )
@@ -356,7 +356,7 @@ let rec of_typ_expr
     begin match path_name with
     | Some path_name ->
       return (
-        Apply (MixedPath.PathName path_name, []),
+        Apply (MixedPath.PathName (path_name, false), []),
         typ_vars,
         []
       )
@@ -535,7 +535,7 @@ let rec local_typ_constructors_of_typ (typ : t) : Name.Set.t =
   | Apply (mixed_path, typs) ->
     let local_typ_constructors = local_typ_constructors_of_typs typs in
     begin match mixed_path with
-    | MixedPath.PathName { path = []; base } ->
+    | MixedPath.PathName ({ path = []; base }, _) ->
       Name.Set.add base local_typ_constructors
     | _ -> local_typ_constructors
     end
@@ -653,8 +653,8 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t)
       | None -> path
       | Some subst ->
         begin match path with
-        | MixedPath.PathName path_name ->
-          MixedPath.PathName (subst.path_name path_name)
+        | MixedPath.PathName (path_name, is_gadt) ->
+          MixedPath.PathName ((subst.path_name path_name), is_gadt)
         | _ -> path
         end in
     Pp.parens (Context.should_parens context Context.Apply && typs <> []) @@
